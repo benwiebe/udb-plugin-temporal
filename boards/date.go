@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"github.com/benwiebe/udb-plugin-temporal/helpers"
-	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 )
@@ -179,11 +177,7 @@ func (b *DateBoard) buildCache(dimensions types.BoardDimensions) {
 	if b.uppercase {
 		ref = strings.ToUpper(ref)
 	}
-	fontSize := findTextFontSize(ref, inner.Dx(), inner.Dy())
-
-	b.cachedFace = truetype.NewFace(
-		fonts.GetUdbFonts().FontForSize(int(fontSize)),
-		&truetype.Options{Size: fontSize, DPI: 72})
+	b.cachedFace = findTextFace(ref, inner.Dx(), inner.Dy())
 
 	m := b.cachedFace.Metrics()
 	b.cachedInner = inner

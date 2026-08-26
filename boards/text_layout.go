@@ -2,10 +2,10 @@ package boards
 
 import (
 	"image"
+	"math"
 
 	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
-	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
 )
 
@@ -29,45 +29,38 @@ func resolveInnerRect(dimensions types.BoardDimensions, padding *int) image.Rect
 	return image.Rect(marginX, marginY, dimensions.Width-marginX, dimensions.Height-marginY)
 }
 
-// findTextFontSize binary-searches for the largest font size where text fits within maxWidth x maxHeight.
-func findTextFontSize(text string, maxWidth, maxHeight int) float64 {
-	lo, hi := 1.0, float64(maxHeight)*2
-	for hi-lo > 0.5 {
-		mid := (lo + hi) / 2
-		face := truetype.NewFace(
-			fonts.GetUdbFonts().FontForSize(int(mid)), &truetype.Options{Size: mid, DPI: 72})
-		d := font.Drawer{Face: face}
-		w := d.MeasureString(text).Ceil()
-		m := face.Metrics()
-		h := (m.Ascent + m.Descent).Ceil()
-		face.Close()
-		if w <= maxWidth && h <= maxHeight {
-			lo = mid
-		} else {
-			hi = mid
-		}
-	}
-	return lo
+func findTextFace(text string, maxWidth, maxHeight int) font.Face {
+	return fonts.GetUdbFonts().FitPixelFace(text, maxWidth, maxHeight, fonts.PixelFontAuto)
 }
 
-func findStackedTextFontSize(topText, bottomText string, maxWidth, maxHeight int, bottomScale float64, lineGap int) float64 {
+func findStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, bottomScale float64, lineGap int) (font.Face, font.Face) {
 	if bottomScale <= 0 {
 		bottomScale = 0.5
 	}
 
-	lo, hi := 1.0, float64(maxHeight)*2
-	for hi-lo > 0.5 {
-		mid := (lo + hi) / 2
-		topFace := truetype.NewFace(
-			fonts.GetUdbFonts().FontForSize(int(mid)), &truetype.Options{Size: mid, DPI: 72})
-		bottomFace := truetype.NewFace(
-			fonts.GetUdbFonts().FontForSize(int(mid*bottomScale)), &truetype.Options{Size: mid * bottomScale, DPI: 72})
+	bestTopScale := 1
+	bestBottomScale := 1
+	topStyle := fonts.PixelFontStyleForText(topText)
+	bottomStyle := fonts.PixelFontStyleForText(bottomText)
+	for topScale := 1; topScale <= maxHeight; topScale++ {
+		bottomScalePixels := int(math.Round(float64(topScale) * bottomScale))
+		if bottomScalePixels < 1 {
+			bottomScalePixels = 1
+		}
 
-		topDrawer := font.Drawer{Face: topFace}
-		bottomDrawer := font.Drawer{Face: bottomFace}
+		topFace := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+			Style:         topStyle,
+			Scale:         topScale,
+			LetterSpacing: -1,
+		})
+		bottomFace := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+			Style:         bottomStyle,
+			Scale:         bottomScalePixels,
+			LetterSpacing: -1,
+		})
 
-		topWidth := topDrawer.MeasureString(topText).Ceil()
-		bottomWidth := bottomDrawer.MeasureString(bottomText).Ceil()
+		topWidth := font.MeasureString(topFace, topText).Ceil()
+		bottomWidth := font.MeasureString(bottomFace, bottomText).Ceil()
 
 		topMetrics := topFace.Metrics()
 		bottomMetrics := bottomFace.Metrics()
@@ -83,14 +76,24 @@ func findStackedTextFontSize(topText, bottomText string, maxWidth, maxHeight int
 			maxLineWidth = bottomWidth
 		}
 
-		if maxLineWidth <= maxWidth && totalHeight <= maxHeight {
-			lo = mid
-		} else {
-			hi = mid
+		if maxLineWidth > maxWidth || totalHeight > maxHeight {
+			break
 		}
+
+		bestTopScale = topScale
+		bestBottomScale = bottomScalePixels
 	}
 
-	return lo
+	return fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+			Style:         topStyle,
+			Scale:         bestTopScale,
+			LetterSpacing: -1,
+		}),
+		fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+			Style:         bottomStyle,
+			Scale:         bestBottomScale,
+			LetterSpacing: -1,
+		})
 }
 
 func isHorizontalAlign(v string) bool {

@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"github.com/benwiebe/udb-plugin-temporal/helpers"
-	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 )
@@ -268,14 +266,7 @@ func (b *ClockDateBoard) buildCache(dimensions types.BoardDimensions) {
 	if b.dateUppercase {
 		dateRef = strings.ToUpper(dateRef)
 	}
-	fontSize := findStackedTextFontSize(timeRef, dateRef, inner.Dx(), inner.Dy(), b.dateScale, b.lineGap)
-
-	b.cachedTimeFace = truetype.NewFace(
-		fonts.GetUdbFonts().FontForSize(int(fontSize)),
-		&truetype.Options{Size: fontSize, DPI: 72})
-	b.cachedDateFace = truetype.NewFace(
-		fonts.GetUdbFonts().FontForSize(int(fontSize*b.dateScale)),
-		&truetype.Options{Size: fontSize * b.dateScale, DPI: 72})
+	b.cachedTimeFace, b.cachedDateFace = findStackedTextFaces(timeRef, dateRef, inner.Dx(), inner.Dy(), b.dateScale, b.lineGap)
 
 	timeMetrics := b.cachedTimeFace.Metrics()
 	dateMetrics := b.cachedDateFace.Metrics()

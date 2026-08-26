@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"github.com/benwiebe/udb-plugin-temporal/helpers"
-	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 )
@@ -252,13 +250,10 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 	b.cachedCountdownSrc = image.NewUniform(b.countdownColour)
 	b.cachedLabelSrc = image.NewUniform(b.labelColour)
 
-	countdownSample := maxCountdownSample(b.showSeconds, b.expiredText)
+	countdownSample := maxCountdownSample(formatCountdownText(b.target.Sub(time.Now()), b.showSeconds, b.expiredText), b.showSeconds, b.expiredText)
 	labelText := b.renderLabel()
 	if labelText == "" {
-		fontSize := findTextFontSize(countdownSample, b.cachedInner.Dx(), b.cachedInner.Dy())
-		b.cachedCountdownFace = truetype.NewFace(
-			fonts.GetUdbFonts().FontForSize(int(fontSize)),
-			&truetype.Options{Size: fontSize, DPI: 72})
+		b.cachedCountdownFace = findTextFace(countdownSample, b.cachedInner.Dx(), b.cachedInner.Dy())
 		metrics := b.cachedCountdownFace.Metrics()
 		b.cachedCountdownAscent = metrics.Ascent.Ceil()
 		b.cachedCountdownDescent = metrics.Descent.Ceil()
@@ -267,13 +262,7 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 		return
 	}
 
-	fontSize := findStackedTextFontSize(countdownSample, labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), b.labelScale, b.lineGap)
-	b.cachedCountdownFace = truetype.NewFace(
-		fonts.GetUdbFonts().FontForSize(int(fontSize)),
-		&truetype.Options{Size: fontSize, DPI: 72})
-	b.cachedLabelFace = truetype.NewFace(
-		fonts.GetUdbFonts().FontForSize(int(fontSize*b.labelScale)),
-		&truetype.Options{Size: fontSize * b.labelScale, DPI: 72})
+	b.cachedCountdownFace, b.cachedLabelFace = findStackedTextFaces(countdownSample, labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), b.labelScale, b.lineGap)
 
 	countdownMetrics := b.cachedCountdownFace.Metrics()
 	labelMetrics := b.cachedLabelFace.Metrics()
@@ -349,10 +338,13 @@ func formatCountdownText(remaining time.Duration, showSeconds bool, expiredText 
 	return fmt.Sprintf("%02d:%02d", totalHours, minutes)
 }
 
-func maxCountdownSample(showSeconds bool, expiredText string) string {
+func maxCountdownSample(currentText string, showSeconds bool, expiredText string) string {
 	sample := "999d 23:59"
 	if showSeconds {
 		sample = "999d 23:59:59"
+	}
+	if len(currentText) > len(sample) {
+		sample = currentText
 	}
 	if len(expiredText) > len(sample) {
 		return expiredText

@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"github.com/benwiebe/udb-plugin-temporal/helpers"
-	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 )
@@ -189,11 +187,7 @@ func (b *DigitalClockBoard) buildCache(dimensions types.BoardDimensions) {
 	// Use the Go time reference moment so the sample string matches the exact layout
 	// (same character count and structure as any real formatted time).
 	ref := time.Date(0, 1, 1, 15, 4, 5, 0, time.UTC).Format(b.format)
-	fontSize := findTextFontSize(ref, inner.Dx(), inner.Dy())
-
-	b.cachedFace = truetype.NewFace(
-		fonts.GetUdbFonts().FontForSize(int(fontSize)),
-		&truetype.Options{Size: fontSize, DPI: 72})
+	b.cachedFace = findTextFace(ref, inner.Dx(), inner.Dy())
 
 	m := b.cachedFace.Metrics()
 	b.cachedInner = inner
