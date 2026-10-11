@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"github.com/benwiebe/udb-plugin-temporal/helpers"
@@ -57,6 +58,7 @@ type CountdownBoard struct {
 	cachedLabelSrc         *image.Uniform
 	cachedBg               *image.Uniform
 	cachedInner            image.Rectangle
+	cachedLabelLines       []string
 	cachedCountdownAscent  int
 	cachedCountdownDescent int
 	cachedCountdownHeight  int
@@ -224,10 +226,13 @@ func (b *CountdownBoard) Render() types.AnimationFrame {
 		countdownY := blockTop + b.cachedCountdownAscent
 		drawTextLine(img, b.cachedCountdownFace, b.cachedCountdownSrc, countdownText, countdownX, countdownY)
 
-		labelWidth := font.MeasureString(b.cachedLabelFace, labelText).Ceil()
-		labelX := alignedX(b.cachedInner, labelWidth, b.horizontalAlign)
 		labelY := blockTop + b.cachedCountdownHeight + b.lineGap + b.cachedLabelAscent
-		drawTextLine(img, b.cachedLabelFace, b.cachedLabelSrc, labelText, labelX, labelY)
+		for _, line := range b.cachedLabelLines {
+			labelWidth := font.MeasureString(b.cachedLabelFace, line).Ceil()
+			labelX := alignedX(b.cachedInner, labelWidth, b.horizontalAlign)
+			drawTextLine(img, b.cachedLabelFace, b.cachedLabelSrc, line, labelX, labelY)
+			labelY += b.cachedLabelHeight + b.lineGap
+		}
 	}
 
 	if b.showSeconds {
@@ -243,6 +248,7 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 	if b.cachedLabelFace != nil {
 		b.cachedLabelFace.Close()
 	}
+	b.cachedLabelLines = nil
 
 	b.cachedDims = dimensions
 	b.cachedInner = resolveInnerRect(dimensions, b.padding)
@@ -262,16 +268,37 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 		return
 	}
 
-	b.cachedCountdownFace, b.cachedLabelFace = findStackedTextFaces(countdownSample, labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), b.labelScale, b.lineGap)
+	b.cachedCountdownFace = findTextFace(countdownSample, b.cachedInner.Dx(), b.cachedInner.Dy())
+	b.cachedLabelFace = fonts.GetUdbFonts().FitPixelFace(labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), fonts.PixelFontAuto)
 
 	countdownMetrics := b.cachedCountdownFace.Metrics()
 	labelMetrics := b.cachedLabelFace.Metrics()
+	b.cachedLabelLines = wrapTextLines(b.cachedLabelFace, labelText, b.cachedInner.Dx())
 	b.cachedCountdownAscent = countdownMetrics.Ascent.Ceil()
 	b.cachedCountdownDescent = countdownMetrics.Descent.Ceil()
 	b.cachedCountdownHeight = (countdownMetrics.Ascent + countdownMetrics.Descent).Ceil()
 	b.cachedLabelAscent = labelMetrics.Ascent.Ceil()
 	b.cachedLabelHeight = (labelMetrics.Ascent + labelMetrics.Descent).Ceil()
-	b.cachedCombinedHeight = b.cachedCountdownHeight + b.lineGap + b.cachedLabelHeight
+
+	labelBlockHeight := len(b.cachedLabelLines) * b.cachedLabelHeight
+	if len(b.cachedLabelLines) > 1 {
+		labelBlockHeight += (len(b.cachedLabelLines) - 1) * b.lineGap
+	}
+	b.cachedCombinedHeight = b.cachedCountdownHeight + b.lineGap + labelBlockHeight
+
+	if b.cachedCombinedHeight > b.cachedInner.Dy() {
+		b.cachedCountdownFace.Close()
+		b.cachedCountdownFace = fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+			Style:         fonts.PixelFontCondensed,
+			Scale:         1,
+			LetterSpacing: -1,
+		})
+		countdownMetrics = b.cachedCountdownFace.Metrics()
+		b.cachedCountdownAscent = countdownMetrics.Ascent.Ceil()
+		b.cachedCountdownDescent = countdownMetrics.Descent.Ceil()
+		b.cachedCountdownHeight = (countdownMetrics.Ascent + countdownMetrics.Descent).Ceil()
+		b.cachedCombinedHeight = b.cachedCountdownHeight + b.lineGap + labelBlockHeight
+	}
 }
 
 func (b *CountdownBoard) renderLabel() string {

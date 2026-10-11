@@ -11,6 +11,9 @@ This plugin is the home for time-centric boards that can be composed into the ma
 - `boards/date.go` is implemented and registered as `date`.
 - `boards/clock_date.go` is implemented and registered as `clock-date`.
 - `boards/countdown.go` is implemented and registered as `countdown`.
+- `datasources/current_time.go` is implemented and registered as `current-time`.
+- `datasources/ical_calendar_events.go` is implemented and registered as `ical-calendar-events`.
+- `datasources/caldav_calendar_events.go` is implemented and registered as `caldav-calendar-events`.
 - The digital clock already supports a small config surface:
   - `format` for Go time layouts
   - `colour` for digit colour
@@ -68,7 +71,7 @@ Possible behaviours:
 
 A board that shows the next event or a short list of upcoming events.
 
-This likely wants a datasource abstraction that can support multiple calendar backends, for example:
+Calendar/event boards should consume a shared event type while datasource implementations vary by source, for example:
 
 - iCal / ICS feeds
 - CalDAV
@@ -76,10 +79,12 @@ This likely wants a datasource abstraction that can support multiple calendar ba
 
 Questions to settle:
 
-- how calendar datasources are configured
-- polling vs push update model
+- shared event data shape across calendar datasources
+- polling vs push update model per datasource type
 - how far ahead to look for events
+- how far back the query window should extend for ongoing events
 - how all-day events should render
+- when to add CalDAV alongside the initial iCal backend
 
 ### Other temporal boards worth considering
 
@@ -96,10 +101,53 @@ Questions to settle:
 - [x] Combined clock + date board
 - [x] Countdown board
 - [ ] Upcoming events board
-- [ ] Calendar datasource abstraction
-- [ ] Calendar backend support (`iCal`, `CalDAV`, etc.)
+- [x] Calendar datasource abstraction
+- [x] Calendar backend support (`iCal`, `CalDAV`, etc.)
 - [ ] Config examples and screenshots
 
 ## Notes
 
 The goal is to keep the board implementations small and composable so the main app can mix and match temporal boards without special-case logic.
+
+Calendar datasources are expected to be live and refresh in the background. `ical-calendar-events` and `caldav-calendar-events` both use periodic refresh plus `DataChanged()` signaling so event boards can re-render immediately when the event list changes.
+
+For larger calendars, prefer `caldav-calendar-events` where possible. It can query only a bounded time window on the server, which is materially cheaper than repeatedly downloading and parsing a multi-year ICS feed on a Raspberry Pi. The ICS datasource now uses conditional HTTP requests (`ETag` / `Last-Modified`), skips re-parsing unchanged local files, and supports a `maxBytes` guard to cap feed size.
+
+Example datasource config for an iCal feed:
+
+```json
+{
+  "id": "family-calendar",
+  "plugin": "udb-plugin-temporal",
+  "datasourceId": "ical-calendar-events",
+  "config": {
+    "url": "https://example.com/calendar.ics",
+    "refreshSeconds": 300,
+    "maxBytes": 8388608,
+    "lookAheadDays": 14,
+    "maxEvents": 5
+  }
+}
+```
+
+`url` also accepts `webcal://` and `webcals://` feed URLs.
+
+Example datasource config for a CalDAV calendar:
+
+```json
+{
+  "id": "personal-calendar",
+  "plugin": "udb-plugin-temporal",
+  "datasourceId": "caldav-calendar-events",
+  "config": {
+    "endpoint": "https://cal.example.com/dav/",
+    "calendarName": "Personal",
+    "username": "alice",
+    "password": "secret",
+    "refreshSeconds": 300,
+    "lookBackDays": 1,
+    "lookAheadDays": 14,
+    "maxEvents": 5
+  }
+}
+```

@@ -3,6 +3,8 @@ package boards
 import (
 	"image"
 	"math"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
@@ -40,8 +42,8 @@ func findStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, b
 
 	bestTopScale := 1
 	bestBottomScale := 1
-	topStyle := fonts.PixelFontStyleForText(topText)
-	bottomStyle := fonts.PixelFontStyleForText(bottomText)
+	topStyle := fonts.PixelFontStyleForTextBounds(topText, maxWidth, maxHeight)
+	bottomStyle := fonts.PixelFontStyleForTextBounds(bottomText, maxWidth, maxHeight)
 	for topScale := 1; topScale <= maxHeight; topScale++ {
 		bottomScalePixels := int(math.Round(float64(topScale) * bottomScale))
 		if bottomScalePixels < 1 {
@@ -145,4 +147,61 @@ func alignedBlockTop(inner image.Rectangle, blockHeight int, align string) int {
 	default:
 		return inner.Min.Y + (inner.Dy()-blockHeight)/2
 	}
+}
+
+func wrapTextLines(face font.Face, text string, maxWidth int) []string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+
+	var lines []string
+	current := ""
+	for _, word := range words {
+		if font.MeasureString(face, word).Ceil() > maxWidth {
+			if current != "" {
+				lines = append(lines, current)
+				current = ""
+			}
+			lines = append(lines, wrapLongWord(face, word, maxWidth)...)
+			continue
+		}
+
+		next := word
+		if current != "" {
+			next = current + " " + word
+		}
+		if font.MeasureString(face, next).Ceil() <= maxWidth {
+			current = next
+			continue
+		}
+
+		lines = append(lines, current)
+		current = word
+	}
+
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func wrapLongWord(face font.Face, word string, maxWidth int) []string {
+	var lines []string
+	current := ""
+	for len(word) > 0 {
+		r, size := utf8.DecodeRuneInString(word)
+		word = word[size:]
+		next := current + string(r)
+		if current != "" && font.MeasureString(face, next).Ceil() > maxWidth {
+			lines = append(lines, current)
+			current = string(r)
+			continue
+		}
+		current = next
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
 }

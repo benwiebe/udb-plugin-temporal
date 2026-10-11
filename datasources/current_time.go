@@ -2,6 +2,7 @@ package datasources
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -20,6 +21,10 @@ func (c *CurrentTimeDatasource) GetName() string {
 
 func (c *CurrentTimeDatasource) GetType() string {
 	return CurrentTimeType
+}
+
+func (c *CurrentTimeDatasource) Init(_ json.RawMessage) error {
+	return nil
 }
 
 func (c *CurrentTimeDatasource) GetData() any {

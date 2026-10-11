@@ -37,6 +37,8 @@ func (u UdbPluginTemporal) GetBoardMap() map[string]types.BoardFactory {
 
 func (u UdbPluginTemporal) GetDatasourceMap() map[string]types.DatasourceFactory {
 	return map[string]types.DatasourceFactory{
-		"current-time": func() types.Datasource { return &datasources.CurrentTimeDatasource{} },
+		"current-time":           func() types.Datasource { return &datasources.CurrentTimeDatasource{} },
+		"ical-calendar-events":   func() types.Datasource { return datasources.NewICalCalendarEventsDatasource() },
+		"caldav-calendar-events": func() types.Datasource { return datasources.NewCalDAVCalendarEventsDatasource() },
 	}
 }
