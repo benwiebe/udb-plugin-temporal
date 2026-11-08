@@ -1,9 +1,11 @@
 package boards
 
 import (
+	"fmt"
 	"image"
 	"math"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/benwiebe/udb-plugin-library/fonts"
@@ -32,7 +34,67 @@ func resolveInnerRect(dimensions types.BoardDimensions, padding *int) image.Rect
 }
 
 func findTextFace(text string, maxWidth, maxHeight int) font.Face {
-	return fonts.GetUdbFonts().FitPixelFace(text, maxWidth, maxHeight, fonts.PixelFontAuto)
+	face := fonts.GetUdbFonts().FitPixelFace(text, maxWidth, maxHeight, fonts.PixelFontAuto)
+	if font.MeasureString(face, text).Ceil() > maxWidth || face.Metrics().Height.Ceil() > maxHeight {
+		face.Close()
+		face = fonts.GetUdbFonts().FitPixelFace(text, maxWidth, maxHeight, fonts.PixelFontCondensed)
+	}
+	return face
+}
+
+func validateBoardDimensions(dimensions types.BoardDimensions, padding *int) error {
+	if dimensions.Width <= 0 || dimensions.Height <= 0 {
+		return fmt.Errorf("display dimensions must be positive")
+	}
+	if padding != nil && *padding < 0 {
+		return fmt.Errorf("padding must be >= 0")
+	}
+	inner := resolveInnerRect(dimensions, padding)
+	if inner.Dx() < 3 || inner.Dy() < 5 {
+		return fmt.Errorf("display and padding must leave at least 3x5 pixels for text")
+	}
+	return nil
+}
+
+func truncateText(face font.Face, text string, maxWidth int) string {
+	if font.MeasureString(face, text).Ceil() <= maxWidth {
+		return text
+	}
+	runes := []rune(text)
+	for len(runes) > 0 {
+		runes = runes[:len(runes)-1]
+		if shortened := string(runes) + "..."; font.MeasureString(face, shortened).Ceil() <= maxWidth {
+			return shortened
+		}
+	}
+	if font.MeasureString(face, "...").Ceil() <= maxWidth {
+		return "..."
+	}
+	return ""
+}
+
+// Month names, weekdays and unpadded days vary in length. Size against a full
+// leap year rather than assuming Go's reference date is the widest output.
+func widestTimeSample(layout string, uppercase bool, location *time.Location) string {
+	if location == nil {
+		location = time.Local
+	}
+	face := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: fonts.PixelFontDotMatrix, Scale: 1, LetterSpacing: -1})
+	defer face.Close()
+	widest, width := "", -1
+	for day := 0; day < 366; day++ {
+		date := time.Date(2028, 1, 1+day, 23, 59, 59, 0, location)
+		for _, hour := range []int{0, 12, 23} {
+			text := date.Add(time.Duration(hour-23) * time.Hour).Format(layout)
+			if uppercase {
+				text = strings.ToUpper(text)
+			}
+			if measured := font.MeasureString(face, text).Ceil(); measured > width {
+				widest, width = text, measured
+			}
+		}
+	}
+	return widest
 }
 
 func findStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, bottomScale float64, lineGap int) (font.Face, font.Face) {
@@ -86,16 +148,61 @@ func findStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, b
 		bestBottomScale = bottomScalePixels
 	}
 
-	return fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
-			Style:         topStyle,
-			Scale:         bestTopScale,
-			LetterSpacing: -1,
-		}),
-		fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
-			Style:         bottomStyle,
-			Scale:         bestBottomScale,
-			LetterSpacing: -1,
-		})
+	topFace := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+		Style:         topStyle,
+		Scale:         bestTopScale,
+		LetterSpacing: -1,
+	})
+	bottomFace := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
+		Style:         bottomStyle,
+		Scale:         bestBottomScale,
+		LetterSpacing: -1,
+	})
+	if topFace.Metrics().Height.Ceil()+bottomFace.Metrics().Height.Ceil()+lineGap > maxHeight {
+		topFace.Close()
+		bottomFace.Close()
+		return findWrappedStackedTextFaces(topText, bottomText, maxWidth, maxHeight, bottomScale, lineGap)
+	}
+	return topFace, bottomFace
+}
+
+// Try pixel styles and integer scales together so wrapping and relative label
+// size participate in the fit, rather than shrinking only the countdown later.
+func findWrappedStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, bottomRatio float64, lineGap int) (font.Face, font.Face) {
+	bestTop, bestBottom, bestHeight := font.Face(nil), font.Face(nil), 0
+	bestRatioError := math.Inf(1)
+	for _, topStyle := range []fonts.PixelFontStyle{fonts.PixelFontStyleForTextBounds(topText, maxWidth, maxHeight), fonts.PixelFontCondensed} {
+		for _, bottomStyle := range []fonts.PixelFontStyle{fonts.PixelFontDotMatrix, fonts.PixelFontCondensed} {
+			for scale := 1; scale <= maxHeight; scale++ {
+				top := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: topStyle, Scale: scale, LetterSpacing: -1})
+				labelScale := max(1, int(math.Round(float64(scale)*bottomRatio)))
+				bottom := fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: bottomStyle, Scale: labelScale, LetterSpacing: -1})
+				topHeight, bottomHeight := top.Metrics().Height.Ceil(), bottom.Metrics().Height.Ceil()
+				lines := wrapTextLines(bottom, bottomText, maxWidth)
+				height := topHeight + len(lines)*(bottomHeight+lineGap)
+				ratioError := math.Abs(float64(bottomHeight)/float64(topHeight) - bottomRatio)
+				if font.MeasureString(top, topText).Ceil() <= maxWidth && height <= maxHeight && (bottomRatio >= 1 || bottomHeight <= topHeight) && (topHeight > bestHeight || topHeight == bestHeight && ratioError < bestRatioError) {
+					if bestTop != nil {
+						bestTop.Close()
+						bestBottom.Close()
+					}
+					bestTop, bestBottom, bestHeight = top, bottom, topHeight
+					bestRatioError = ratioError
+				} else {
+					top.Close()
+					bottom.Close()
+				}
+				if topHeight > maxHeight {
+					break
+				}
+			}
+		}
+	}
+	if bestTop == nil {
+		bestTop = findTextFace(topText, maxWidth, maxHeight)
+		bestBottom = fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: fonts.PixelFontCondensed, Scale: 1, LetterSpacing: -1})
+	}
+	return bestTop, bestBottom
 }
 
 func isHorizontalAlign(v string) bool {

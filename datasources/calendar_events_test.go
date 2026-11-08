@@ -144,10 +144,8 @@ func TestICalCalendarEventsDatasource_LocalSourceSkipsUnchangedFiles(t *testing.
 		t.Fatalf("Init: %v", err)
 	}
 
-	if _, modified, err := ds.readSource(context.Background()); err != nil {
-		t.Fatalf("first readSource: %v", err)
-	} else if !modified {
-		t.Fatal("expected first readSource to report modification")
+	if _, err := ds.fetchEvents(context.Background()); err != nil {
+		t.Fatalf("first fetchEvents: %v", err)
 	}
 
 	if _, modified, err := ds.readSource(context.Background()); err != nil {

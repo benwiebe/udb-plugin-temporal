@@ -27,7 +27,7 @@ import (
 //   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
 //   - uppercase:         render the formatted date in uppercase (default false)
 type DateBoard struct {
-	datasource       *datasources.CurrentTimeDatasource
+	datasource       types.Datasource
 	format           string
 	colour           color.Color
 	backgroundColour color.Color
@@ -60,12 +60,11 @@ func (b *DateBoard) GetType() types.BoardType  { return types.BoardTypeDynamic }
 func (b *DateBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
 func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
-	typedDatasource, ok := datasource.(*datasources.CurrentTimeDatasource)
-	if !ok {
-		return fmt.Errorf("date: expected *datasources.CurrentTimeDatasource, got %T", datasource)
+	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
+		return fmt.Errorf("date: expected a current-time datasource, got %T", datasource)
 	}
 
-	b.datasource = typedDatasource
+	b.datasource = datasource
 	b.format = "Mon Jan 2"
 	b.colour = color.White
 	b.backgroundColour = color.Black
@@ -133,6 +132,12 @@ func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimen
 		}
 	}
 
+	if _, ok := datasource.GetData().(time.Time); !ok {
+		return fmt.Errorf("datasource must return time.Time")
+	}
+	if err := validateBoardDimensions(dimensions, b.padding); err != nil {
+		return err
+	}
 	b.buildCache(dimensions)
 	return nil
 }
@@ -151,19 +156,21 @@ func (b *DateBoard) Render() types.AnimationFrame {
 	img := image.NewRGBA(image.Rect(0, 0, b.cachedDims.Width, b.cachedDims.Height))
 	draw.Draw(img, img.Bounds(), b.cachedBg, image.Point{}, draw.Src)
 
+	dateStr = truncateText(b.cachedFace, dateStr, b.cachedInner.Dx())
 	textWidth := font.MeasureString(b.cachedFace, dateStr).Ceil()
 	x := alignedX(b.cachedInner, textWidth, b.horizontalAlign)
 	y := alignedBaselineY(b.cachedInner, b.cachedAscent, b.cachedHeight, b.cachedDescent, b.verticalAlign)
 
 	d := font.Drawer{
-		Dst:  img,
+		Dst:  img.SubImage(b.cachedInner).(draw.Image),
 		Src:  b.cachedSrc,
 		Face: b.cachedFace,
 		Dot:  fixed.P(x, y),
 	}
 	d.DrawString(dateStr)
 
-	return types.AnimationFrame{Img: img, Duration: time.Minute}
+	nextMidnight := time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, t.Location())
+	return types.AnimationFrame{Img: img, Duration: min(time.Minute, nextMidnight.Sub(t))}
 }
 
 func (b *DateBoard) buildCache(dimensions types.BoardDimensions) {
@@ -173,10 +180,7 @@ func (b *DateBoard) buildCache(dimensions types.BoardDimensions) {
 	b.cachedDims = dimensions
 
 	inner := resolveInnerRect(dimensions, b.padding)
-	ref := time.Date(2006, 1, 2, 15, 4, 5, 0, time.UTC).Format(b.format)
-	if b.uppercase {
-		ref = strings.ToUpper(ref)
-	}
+	ref := widestTimeSample(b.format, b.uppercase, b.location)
 	b.cachedFace = findTextFace(ref, inner.Dx(), inner.Dy())
 
 	m := b.cachedFace.Metrics()

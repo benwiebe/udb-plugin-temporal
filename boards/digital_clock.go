@@ -27,7 +27,7 @@ import (
 //   - verticalAlign:     "top", "center", or "bottom" (default "center")
 //   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
 type DigitalClockBoard struct {
-	datasource       *datasources.CurrentTimeDatasource
+	datasource       types.Datasource
 	format           string
 	colour           color.Color
 	backgroundColour color.Color
@@ -61,12 +61,11 @@ func (b *DigitalClockBoard) GetType() types.BoardType  { return types.BoardTypeD
 func (b *DigitalClockBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
 func (b *DigitalClockBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
-	typedDatasource, ok := datasource.(*datasources.CurrentTimeDatasource)
-	if !ok {
-		return fmt.Errorf("digital-clock: expected *datasources.CurrentTimeDatasource, got %T", datasource)
+	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
+		return fmt.Errorf("digital-clock: expected a current-time datasource, got %T", datasource)
 	}
 
-	b.datasource = typedDatasource
+	b.datasource = datasource
 	b.format = "15:04"
 	b.colour = color.White
 	b.backgroundColour = color.Black
@@ -135,6 +134,12 @@ func (b *DigitalClockBoard) Init(cfg json.RawMessage, datasource types.Datasourc
 		}
 	}
 
+	if _, ok := datasource.GetData().(time.Time); !ok {
+		return fmt.Errorf("datasource must return time.Time")
+	}
+	if err := validateBoardDimensions(dimensions, b.padding); err != nil {
+		return err
+	}
 	b.buildCache(dimensions)
 	return nil
 }
@@ -153,12 +158,13 @@ func (b *DigitalClockBoard) Render() types.AnimationFrame {
 	img := image.NewRGBA(image.Rect(0, 0, b.cachedDims.Width, b.cachedDims.Height))
 	draw.Draw(img, img.Bounds(), b.cachedBg, image.Point{}, draw.Src)
 
+	timeStr = truncateText(b.cachedFace, timeStr, b.cachedInner.Dx())
 	textWidth := font.MeasureString(b.cachedFace, timeStr).Ceil()
 	x := alignedX(b.cachedInner, textWidth, b.horizontalAlign)
 	y := alignedBaselineY(b.cachedInner, b.cachedAscent, b.cachedHeight, b.cachedDescent, b.verticalAlign)
 
 	d := font.Drawer{
-		Dst:  img,
+		Dst:  img.SubImage(b.cachedInner).(draw.Image),
 		Src:  b.cachedSrc,
 		Face: b.cachedFace,
 		Dot:  fixed.P(x, y),
@@ -186,7 +192,7 @@ func (b *DigitalClockBoard) buildCache(dimensions types.BoardDimensions) {
 
 	// Use the Go time reference moment so the sample string matches the exact layout
 	// (same character count and structure as any real formatted time).
-	ref := time.Date(0, 1, 1, 15, 4, 5, 0, time.UTC).Format(b.format)
+	ref := widestTimeSample(b.format, false, b.location)
 	b.cachedFace = findTextFace(ref, inner.Dx(), inner.Dy())
 
 	m := b.cachedFace.Metrics()

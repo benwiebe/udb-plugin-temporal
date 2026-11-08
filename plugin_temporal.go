@@ -22,16 +22,16 @@ func (u UdbPluginTemporal) GetName() string {
 }
 
 func (u UdbPluginTemporal) Configure(config types.PluginConfig) error {
-	//TODO implement me
 	return nil
 }
 
 func (u UdbPluginTemporal) GetBoardMap() map[string]types.BoardFactory {
 	return map[string]types.BoardFactory{
-		"digital-clock": func() types.Board { return boards.NewDigitalClockBoard() },
-		"date":          func() types.Board { return boards.NewDateBoard() },
-		"clock-date":    func() types.Board { return boards.NewClockDateBoard() },
-		"countdown":     func() types.Board { return boards.NewCountdownBoard() },
+		"digital-clock":   func() types.Board { return boards.NewDigitalClockBoard() },
+		"date":            func() types.Board { return boards.NewDateBoard() },
+		"clock-date":      func() types.Board { return boards.NewClockDateBoard() },
+		"countdown":       func() types.Board { return boards.NewCountdownBoard() },
+		"upcoming-events": func() types.Board { return boards.NewUpcomingEventsBoard() },
 	}
 }
 

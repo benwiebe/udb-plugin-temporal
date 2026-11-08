@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -58,6 +59,10 @@ func (d *CalDAVCalendarEventsDatasource) Init(cfg json.RawMessage) error {
 	if parsed.Endpoint == "" {
 		return fmt.Errorf("caldav-calendar-events: endpoint is required")
 	}
+	u, err := url.Parse(parsed.Endpoint)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("caldav-calendar-events: endpoint must be an HTTP(S) URL")
+	}
 	if parsed.CalendarPath == "" && parsed.CalendarName == "" {
 		return fmt.Errorf("caldav-calendar-events: calendarPath or calendarName is required")
 	}
@@ -88,15 +93,6 @@ func (d *CalDAVCalendarEventsDatasource) Start(ctx context.Context) error {
 	}
 	d.client = client
 
-	if d.calendarPath == "" {
-		path, err := d.resolveCalendarPath(ctx)
-		if err != nil {
-			return err
-		}
-		d.calendarPath = path
-	}
-	d.source = d.calendarPath
-
 	return d.calendarEventsPollingDatasource.Start(ctx)
 }
 
@@ -104,22 +100,29 @@ func (d *CalDAVCalendarEventsDatasource) fetchEvents(ctx context.Context) ([]Cal
 	if d.client == nil {
 		return nil, fmt.Errorf("caldav-calendar-events: client is not initialized")
 	}
+	if d.calendarPath == "" {
+		path, err := d.resolveCalendarPath(ctx)
+		if err != nil {
+			return nil, err
+		}
+		d.calendarPath = path
+	}
+	d.source = d.calendarPath
 
 	start, end := d.queryWindow()
+	// go-webdav formats these values with a literal Z; convert before encoding.
+	start, end = start.UTC(), end.UTC()
 	query := &caldav.CalendarQuery{
 		CompRequest: caldav.CalendarCompRequest{
 			Name:     "VCALENDAR",
 			AllProps: true,
 			AllComps: false,
+			Expand:   &caldav.CalendarExpandRequest{Start: start, End: end},
 			Comps: []caldav.CalendarCompRequest{
 				{
 					Name:     "VEVENT",
 					AllProps: true,
 					AllComps: true,
-					Expand: &caldav.CalendarExpandRequest{
-						Start: start,
-						End:   end,
-					},
 				},
 			},
 		},
@@ -165,9 +168,12 @@ func (d *CalDAVCalendarEventsDatasource) resolveCalendarPath(ctx context.Context
 	}
 
 	for _, calendar := range calendars {
-		if d.calendarName != "" && calendar.Name == d.calendarName {
+		if d.calendarName != "" && calendar.Name == d.calendarName && supportsEventComponent(calendar.SupportedComponentSet) {
 			return calendar.Path, nil
 		}
+	}
+	if d.calendarName != "" {
+		return "", fmt.Errorf("caldav-calendar-events: calendar %q not found or does not support events", d.calendarName)
 	}
 	for _, calendar := range calendars {
 		if supportsEventComponent(calendar.SupportedComponentSet) {

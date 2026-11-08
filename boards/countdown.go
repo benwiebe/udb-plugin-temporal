@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"github.com/benwiebe/udb-plugin-temporal/helpers"
@@ -35,7 +34,7 @@ import (
 //   - labelScale:        relative label font scale versus countdown font (default 0.35)
 //   - lineGap:           gap in pixels between countdown and label lines (default 2)
 type CountdownBoard struct {
-	datasource       *datasources.CurrentTimeDatasource
+	datasource       types.Datasource
 	target           time.Time
 	location         *time.Location
 	label            string
@@ -80,12 +79,11 @@ func (b *CountdownBoard) GetType() types.BoardType  { return types.BoardTypeDyna
 func (b *CountdownBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
 func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
-	typedDatasource, ok := datasource.(*datasources.CurrentTimeDatasource)
-	if !ok {
-		return fmt.Errorf("countdown: expected *datasources.CurrentTimeDatasource, got %T", datasource)
+	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
+		return fmt.Errorf("countdown: expected a current-time datasource, got %T", datasource)
 	}
 
-	b.datasource = typedDatasource
+	b.datasource = datasource
 	b.countdownColour = color.White
 	b.labelColour = color.White
 	b.backgroundColour = color.Black
@@ -197,6 +195,12 @@ func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 		b.lineGap = *parsed.LineGap
 	}
 
+	if _, ok := datasource.GetData().(time.Time); !ok {
+		return fmt.Errorf("datasource must return time.Time")
+	}
+	if err := validateBoardDimensions(dimensions, b.padding); err != nil {
+		return err
+	}
 	b.buildCache(dimensions)
 	return nil
 }
@@ -213,32 +217,47 @@ func (b *CountdownBoard) Render() types.AnimationFrame {
 	img := image.NewRGBA(image.Rect(0, 0, b.cachedDims.Width, b.cachedDims.Height))
 	draw.Draw(img, img.Bounds(), b.cachedBg, image.Point{}, draw.Src)
 
+	countdownText = truncateText(b.cachedCountdownFace, countdownText, b.cachedInner.Dx())
+	content := img.SubImage(b.cachedInner).(draw.Image)
 	if labelText == "" {
 		textWidth := font.MeasureString(b.cachedCountdownFace, countdownText).Ceil()
 		x := alignedX(b.cachedInner, textWidth, b.horizontalAlign)
 		y := alignedBaselineY(b.cachedInner, b.cachedCountdownAscent, b.cachedCountdownHeight, b.cachedCountdownDescent, b.verticalAlign)
-		drawTextLine(img, b.cachedCountdownFace, b.cachedCountdownSrc, countdownText, x, y)
+		drawTextLine(content, b.cachedCountdownFace, b.cachedCountdownSrc, countdownText, x, y)
 	} else {
 		blockTop := alignedBlockTop(b.cachedInner, b.cachedCombinedHeight, b.verticalAlign)
 
 		countdownWidth := font.MeasureString(b.cachedCountdownFace, countdownText).Ceil()
 		countdownX := alignedX(b.cachedInner, countdownWidth, b.horizontalAlign)
 		countdownY := blockTop + b.cachedCountdownAscent
-		drawTextLine(img, b.cachedCountdownFace, b.cachedCountdownSrc, countdownText, countdownX, countdownY)
+		drawTextLine(content, b.cachedCountdownFace, b.cachedCountdownSrc, countdownText, countdownX, countdownY)
 
 		labelY := blockTop + b.cachedCountdownHeight + b.lineGap + b.cachedLabelAscent
 		for _, line := range b.cachedLabelLines {
 			labelWidth := font.MeasureString(b.cachedLabelFace, line).Ceil()
 			labelX := alignedX(b.cachedInner, labelWidth, b.horizontalAlign)
-			drawTextLine(img, b.cachedLabelFace, b.cachedLabelSrc, line, labelX, labelY)
+			drawTextLine(content, b.cachedLabelFace, b.cachedLabelSrc, line, labelX, labelY)
 			labelY += b.cachedLabelHeight + b.lineGap
 		}
 	}
 
 	if b.showSeconds {
-		return types.AnimationFrame{Img: img, Duration: time.Second}
+		delay := time.Second
+		if remaining := b.target.Sub(now); remaining > 0 {
+			delay = min(delay, max(time.Millisecond, remaining))
+		}
+		return types.AnimationFrame{Img: img, Duration: delay}
 	}
-	return types.AnimationFrame{Img: img, Duration: time.Minute}
+	remaining := b.target.Sub(now)
+	delay := time.Minute
+	if remaining > 0 {
+		// Minute digits change relative to the target, not the wall-clock minute.
+		delay = remaining % time.Minute
+		if delay == 0 {
+			delay = time.Millisecond
+		}
+	}
+	return types.AnimationFrame{Img: img, Duration: delay}
 }
 
 func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
@@ -268,8 +287,7 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 		return
 	}
 
-	b.cachedCountdownFace = findTextFace(countdownSample, b.cachedInner.Dx(), b.cachedInner.Dy())
-	b.cachedLabelFace = fonts.GetUdbFonts().FitPixelFace(labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), fonts.PixelFontAuto)
+	b.cachedCountdownFace, b.cachedLabelFace = findWrappedStackedTextFaces(countdownSample, labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), b.labelScale, b.lineGap)
 
 	countdownMetrics := b.cachedCountdownFace.Metrics()
 	labelMetrics := b.cachedLabelFace.Metrics()
@@ -280,24 +298,17 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 	b.cachedLabelAscent = labelMetrics.Ascent.Ceil()
 	b.cachedLabelHeight = (labelMetrics.Ascent + labelMetrics.Descent).Ceil()
 
-	labelBlockHeight := len(b.cachedLabelLines) * b.cachedLabelHeight
-	if len(b.cachedLabelLines) > 1 {
-		labelBlockHeight += (len(b.cachedLabelLines) - 1) * b.lineGap
+	available := b.cachedInner.Dy() - b.cachedCountdownHeight - b.lineGap
+	maxLines := max(0, (available+b.lineGap)/(b.cachedLabelHeight+b.lineGap))
+	if len(b.cachedLabelLines) > maxLines {
+		b.cachedLabelLines = b.cachedLabelLines[:maxLines]
+		if maxLines > 0 {
+			b.cachedLabelLines[maxLines-1] = truncateText(b.cachedLabelFace, b.cachedLabelLines[maxLines-1]+"...", b.cachedInner.Dx())
+		}
 	}
-	b.cachedCombinedHeight = b.cachedCountdownHeight + b.lineGap + labelBlockHeight
-
-	if b.cachedCombinedHeight > b.cachedInner.Dy() {
-		b.cachedCountdownFace.Close()
-		b.cachedCountdownFace = fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{
-			Style:         fonts.PixelFontCondensed,
-			Scale:         1,
-			LetterSpacing: -1,
-		})
-		countdownMetrics = b.cachedCountdownFace.Metrics()
-		b.cachedCountdownAscent = countdownMetrics.Ascent.Ceil()
-		b.cachedCountdownDescent = countdownMetrics.Descent.Ceil()
-		b.cachedCountdownHeight = (countdownMetrics.Ascent + countdownMetrics.Descent).Ceil()
-		b.cachedCombinedHeight = b.cachedCountdownHeight + b.lineGap + labelBlockHeight
+	b.cachedCombinedHeight = b.cachedCountdownHeight
+	if len(b.cachedLabelLines) > 0 {
+		b.cachedCombinedHeight += b.lineGap + len(b.cachedLabelLines)*b.cachedLabelHeight + (len(b.cachedLabelLines)-1)*b.lineGap
 	}
 }
 

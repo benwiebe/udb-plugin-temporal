@@ -1,0 +1,17 @@
+{
+  "display": { "type": "http", "width": 64, "height": 32, "scale": 8 },
+  "datasources": [
+    { "id": "clock", "plugin": "udb-plugin-temporal", "datasourceId": "current-time" },
+    {
+      "id": "calendar", "plugin": "udb-plugin-temporal", "datasourceId": "ical-calendar-events",
+      "config": { "path": "examples/demo.ics", "timezone": "America/Toronto", "lookAheadDays": 14, "maxEvents": 10 }
+    }
+  ],
+  "boards": [
+    { "plugin": "udb-plugin-temporal", "boardId": "digital-clock", "datasource": "clock", "durationSeconds": 8, "config": { "timezone": "America/Toronto", "colour": "#64B4FF" } },
+    { "plugin": "udb-plugin-temporal", "boardId": "date", "datasource": "clock", "durationSeconds": 8, "config": { "timezone": "America/Toronto", "format": "Mon Jan 2" } },
+    { "plugin": "udb-plugin-temporal", "boardId": "clock-date", "datasource": "clock", "durationSeconds": 8, "config": { "timezone": "America/Toronto", "dateColour": "#64B4FF", "padding": 2 } },
+    { "plugin": "udb-plugin-temporal", "boardId": "countdown", "datasource": "clock", "durationSeconds": 8, "config": { "target": "2030-01-01T00:00:00-05:00", "label": "New year", "padding": 2, "showSeconds": false, "labelColour": "#64B4FF" } },
+    { "plugin": "udb-plugin-temporal", "boardId": "upcoming-events", "datasource": "calendar", "durationSeconds": 8, "config": { "timezone": "America/Toronto", "padding": 2 } }
+  ]
+}

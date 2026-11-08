@@ -1,0 +1,16 @@
+{
+  "display": { "type": "http", "width": 128, "height": 64, "scale": 4 },
+  "datasources": [
+    {
+      "id": "calendar", "plugin": "udb-plugin-temporal", "datasourceId": "caldav-calendar-events",
+      "config": {
+        "endpoint": "https://cal.example.com/dav/", "calendarName": "Personal",
+        "username": "alice", "password": "replace-with-app-password",
+        "timezone": "America/Toronto", "refreshSeconds": 300, "lookBackDays": 1, "lookAheadDays": 14, "maxEvents": 10
+      }
+    }
+  ],
+  "boards": [
+    { "plugin": "udb-plugin-temporal", "boardId": "upcoming-events", "datasource": "calendar", "config": { "timezone": "America/Toronto", "maxEvents": 3, "showLocation": true, "padding": 2 } }
+  ]
+}

@@ -33,7 +33,7 @@ import (
 //   - dateScale:         relative date font scale versus time font (default 0.45)
 //   - lineGap:           gap in pixels between time and date lines (default 2)
 type ClockDateBoard struct {
-	datasource       *datasources.CurrentTimeDatasource
+	datasource       types.Datasource
 	timeFormat       string
 	dateFormat       string
 	timeColour       color.Color
@@ -77,12 +77,11 @@ func (b *ClockDateBoard) GetType() types.BoardType  { return types.BoardTypeDyna
 func (b *ClockDateBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
 func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
-	typedDatasource, ok := datasource.(*datasources.CurrentTimeDatasource)
-	if !ok {
-		return fmt.Errorf("clock-date: expected *datasources.CurrentTimeDatasource, got %T", datasource)
+	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
+		return fmt.Errorf("clock-date: expected a current-time datasource, got %T", datasource)
 	}
 
-	b.datasource = typedDatasource
+	b.datasource = datasource
 	b.timeFormat = "15:04"
 	b.dateFormat = "Mon Jan 2"
 	b.timeColour = color.White
@@ -195,6 +194,15 @@ func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 		}
 	}
 
+	if _, ok := datasource.GetData().(time.Time); !ok {
+		return fmt.Errorf("datasource must return time.Time")
+	}
+	if err := validateBoardDimensions(dimensions, b.padding); err != nil {
+		return err
+	}
+	if resolveInnerRect(dimensions, b.padding).Dy() < 10+b.lineGap {
+		return fmt.Errorf("clock-date: insufficient height for two text lines and lineGap")
+	}
 	b.buildCache(dimensions)
 	return nil
 }
@@ -218,6 +226,8 @@ func (b *ClockDateBoard) Render() types.AnimationFrame {
 	img := image.NewRGBA(image.Rect(0, 0, b.cachedDims.Width, b.cachedDims.Height))
 	draw.Draw(img, img.Bounds(), b.cachedBg, image.Point{}, draw.Src)
 
+	timeStr = truncateText(b.cachedTimeFace, timeStr, b.cachedInner.Dx())
+	dateStr = truncateText(b.cachedDateFace, dateStr, b.cachedInner.Dx())
 	blockTop := alignedBlockTop(b.cachedInner, b.cachedCombinedHeight, b.verticalAlign)
 
 	timeWidth := font.MeasureString(b.cachedTimeFace, timeStr).Ceil()
@@ -225,7 +235,7 @@ func (b *ClockDateBoard) Render() types.AnimationFrame {
 	timeY := blockTop + b.cachedTimeAscent
 
 	timeDrawer := font.Drawer{
-		Dst:  img,
+		Dst:  img.SubImage(b.cachedInner).(draw.Image),
 		Src:  b.cachedTimeSrc,
 		Face: b.cachedTimeFace,
 		Dot:  fixed.P(timeX, timeY),
@@ -237,7 +247,7 @@ func (b *ClockDateBoard) Render() types.AnimationFrame {
 	dateY := blockTop + b.cachedTimeHeight + b.lineGap + b.cachedDateAscent
 
 	dateDrawer := font.Drawer{
-		Dst:  img,
+		Dst:  img.SubImage(b.cachedInner).(draw.Image),
 		Src:  b.cachedDateSrc,
 		Face: b.cachedDateFace,
 		Dot:  fixed.P(dateX, dateY),
@@ -261,11 +271,8 @@ func (b *ClockDateBoard) buildCache(dimensions types.BoardDimensions) {
 	b.cachedDims = dimensions
 
 	inner := resolveInnerRect(dimensions, b.padding)
-	timeRef := time.Date(0, 1, 1, 15, 4, 5, 0, time.UTC).Format(b.timeFormat)
-	dateRef := time.Date(2006, 1, 2, 15, 4, 5, 0, time.UTC).Format(b.dateFormat)
-	if b.dateUppercase {
-		dateRef = strings.ToUpper(dateRef)
-	}
+	timeRef := widestTimeSample(b.timeFormat, false, b.location)
+	dateRef := widestTimeSample(b.dateFormat, b.dateUppercase, b.location)
 	b.cachedTimeFace, b.cachedDateFace = findStackedTextFaces(timeRef, dateRef, inner.Dx(), inner.Dy(), b.dateScale, b.lineGap)
 
 	timeMetrics := b.cachedTimeFace.Metrics()

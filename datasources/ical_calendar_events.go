@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -16,13 +17,18 @@ import (
 
 type ICalCalendarEventsDatasource struct {
 	calendarEventsPollingDatasource
-	client        *http.Client
-	etag          string
-	lastModified  string
-	maxBytes      int64
-	sourceURL     string
-	sourceModTime time.Time
-	sourceSize    int64
+	client              *http.Client
+	etag                string
+	lastModified        string
+	maxBytes            int64
+	sourceURL           string
+	sourceModTime       time.Time
+	sourceSize          int64
+	calendar            *ical.Calendar
+	pendingETag         string
+	pendingLastModified string
+	pendingModTime      time.Time
+	pendingSize         int64
 }
 
 func NewICalCalendarEventsDatasource() *ICalCalendarEventsDatasource {
@@ -58,10 +64,17 @@ func (d *ICalCalendarEventsDatasource) Init(cfg json.RawMessage) error {
 		}
 	}
 
+	if parsed.URL != "" && parsed.Path != "" {
+		return fmt.Errorf("ical-calendar-events: specify only one of url or path")
+	}
 	switch {
 	case parsed.URL != "":
 		d.source = parsed.URL
 		d.sourceURL = normalizeCalendarURL(parsed.URL)
+		u, err := url.Parse(d.sourceURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("ical-calendar-events: url must be an HTTP(S) or webcal feed URL")
+		}
 	case parsed.Path != "":
 		d.source = parsed.Path
 	default:
@@ -86,17 +99,22 @@ func (d *ICalCalendarEventsDatasource) fetchEvents(ctx context.Context) ([]Calen
 	if err != nil {
 		return nil, err
 	}
-	if !modified {
-		return d.GetData().(CalendarEventsData).Events, nil
+	if modified {
+		cal, err := ical.NewDecoder(bytes.NewReader(body)).Decode()
+		if err != nil {
+			return nil, fmt.Errorf("ical-calendar-events: decode %q: %w", d.source, err)
+		}
+		d.calendar = cal
+		// Only acknowledge a version after it has been read and parsed successfully.
+		d.etag, d.lastModified = d.pendingETag, d.pendingLastModified
+		d.sourceModTime, d.sourceSize = d.pendingModTime, d.pendingSize
 	}
-
-	cal, err := ical.NewDecoder(bytes.NewReader(body)).Decode()
-	if err != nil {
-		return nil, fmt.Errorf("ical-calendar-events: decode %q: %w", d.source, err)
+	if d.calendar == nil {
+		return nil, fmt.Errorf("ical-calendar-events: source unchanged without a cached calendar")
 	}
 
 	windowStart, windowEnd := d.queryWindow()
-	return convertICalCalendar(cal, d.location, windowStart, windowEnd), nil
+	return convertICalCalendar(d.calendar, d.location, windowStart, windowEnd), nil
 }
 
 func (d *ICalCalendarEventsDatasource) readSource(ctx context.Context) ([]byte, bool, error) {
@@ -122,8 +140,6 @@ func (d *ICalCalendarEventsDatasource) readSource(ctx context.Context) ([]byte, 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return nil, false, fmt.Errorf("ical-calendar-events: fetch %q: status %s", d.source, resp.Status)
 		}
-		d.etag = resp.Header.Get("ETag")
-		d.lastModified = resp.Header.Get("Last-Modified")
 		if resp.ContentLength > d.maxBytes && d.maxBytes > 0 {
 			return nil, false, fmt.Errorf("ical-calendar-events: payload exceeds maxBytes limit of %d", d.maxBytes)
 		}
@@ -131,6 +147,8 @@ func (d *ICalCalendarEventsDatasource) readSource(ctx context.Context) ([]byte, 
 		if err != nil {
 			return nil, false, fmt.Errorf("ical-calendar-events: read %q: %w", d.source, err)
 		}
+		d.pendingETag = resp.Header.Get("ETag")
+		d.pendingLastModified = resp.Header.Get("Last-Modified")
 		return body, true, nil
 	}
 
@@ -153,8 +171,8 @@ func (d *ICalCalendarEventsDatasource) readSource(ctx context.Context) ([]byte, 
 		return nil, false, fmt.Errorf("ical-calendar-events: read %q: %w", d.source, err)
 	}
 
-	d.sourceModTime = info.ModTime()
-	d.sourceSize = info.Size()
+	d.pendingModTime = info.ModTime()
+	d.pendingSize = info.Size()
 	return body, true, nil
 }
 

@@ -1,0 +1,15 @@
+{
+  "display": { "type": "http", "width": 64, "height": 32, "scale": 8 },
+  "datasources": [
+    {
+      "id": "calendar", "plugin": "udb-plugin-temporal", "datasourceId": "ical-calendar-events",
+      "config": {
+        "url": "https://example.com/calendar.ics", "timezone": "America/Toronto",
+        "refreshSeconds": 300, "lookBackDays": 1, "lookAheadDays": 14, "maxEvents": 10, "maxBytes": 8388608
+      }
+    }
+  ],
+  "boards": [
+    { "plugin": "udb-plugin-temporal", "boardId": "upcoming-events", "datasource": "calendar", "config": { "timezone": "America/Toronto", "padding": 2 } }
+  ]
+}

@@ -1,153 +1,71 @@
-# udb-plugin-temporal
+# UDB Temporal
 
-Temporal boards and supporting datasources for UDB.
+Time and calendar boards for [UDB](https://github.com/benwiebe/udb-core), a plugin-based runtime for Raspberry Pi LED matrix displays. Boards render with bitmap pixel fonts and can be previewed through UDB's HTTP display without hardware.
 
-This plugin is the home for time-centric boards that can be composed into the main UDB app through the shared plugin library.
+Requires Go 1.26.1 or later and `udb-plugin-library v0.7.0` or later. Plugins are normal Go packages compiled into UDB; there are no runtime `.so` files.
 
-## Current status
+## Boards and datasources
 
-- Plugin scaffold is in place.
-- `boards/digital_clock.go` is implemented and registered as `digital-clock`.
-- `boards/date.go` is implemented and registered as `date`.
-- `boards/clock_date.go` is implemented and registered as `clock-date`.
-- `boards/countdown.go` is implemented and registered as `countdown`.
-- `datasources/current_time.go` is implemented and registered as `current-time`.
-- `datasources/ical_calendar_events.go` is implemented and registered as `ical-calendar-events`.
-- `datasources/caldav_calendar_events.go` is implemented and registered as `caldav-calendar-events`.
-- The digital clock already supports a small config surface:
-  - `format` for Go time layouts
-  - `colour` for digit colour
-  - `blinkColon` to hide colons on alternating seconds
+| Board ID | Purpose | Datasource ID |
+|----------|---------|---------------|
+| `digital-clock` | Clock with configurable format, timezone and blinking colon | `current-time` |
+| `date` | Current date | `current-time` |
+| `clock-date` | Stacked clock and date | `current-time` |
+| `countdown` | Time remaining until a target, with an optional label | `current-time` |
+| `upcoming-events` | Next calendar event or a short list | `ical-calendar-events` or `caldav-calendar-events` |
 
-## Board ideas
+Every configuration references the plugin ID `udb-plugin-temporal`. You must declare datasource instances; UDB does not create them automatically. Explicitly select the datasource on each board when using multiple calendars.
 
-### Digital clock
+## Try the plugin locally
 
-A polished, configurable clock board with a small but useful config surface.
+With sibling checkouts of UDB core, the plugin library and this plugin:
 
-Possible config options to keep exploring:
+1. Add `import _ "github.com/benwiebe/udb-plugin-temporal"` to core's `plugin_imports.go`.
+2. From the core directory, ensure the modules are in your Go workspace: `go work use . ../udb-plugin-library ../udb-plugin-temporal`.
+3. Build core with `make build`.
+4. From this plugin directory, copy `examples/config.json` to `config.json` and run `../udb-core/udb`.
+5. Open <http://localhost:8080> to see all five boards rotate.
 
-- font style or theme presets
-- padding / alignment modes
-- background colour or transparency
-- seconds display toggle
-- 12h / 24h presets via format helpers
-- locale / timezone handling if that belongs in the datasource or board config
+The demo reads [a local recurring calendar](examples/demo.ics). The countdown target is an example; change it to your own date. UDB reads `config.json` from the working directory, and the example calendar path is relative to that directory.
 
-### Date board
+Full configurations are provided for [all boards with a local calendar](examples/config.json), [an HTTP/webcal feed](examples/ical-http.json), and [CalDAV with an event list](examples/caldav.json). Replace the remote examples' URLs and credentials before use. Set positive `durationSeconds` values to rotate dynamic boards; an omitted or zero duration holds one board indefinitely.
 
-A date-focused board that can stay separate or be folded into the clock board as a variant.
+See [the configuration reference](docs/CONFIGURATION.md) for every setting and default, plus calendar behavior and supported recurrence features.
 
-Things to decide:
+## Rendered examples
 
-- standalone date board vs combined clock/date board
-- format presets for common date styles
-- weekday inclusion
-- locale awareness
+These PNGs come directly from board rendering, enlarged with nearest-neighbor scaling. Clock, date, countdown and next-event examples use 64×32 pixels; the calendar list uses 128×64.
 
-### Combined clock + date board
+| Digital clock | Date |
+|---------------|------|
+| ![Digital clock](docs/screenshots/digital-clock.png) | ![Date](docs/screenshots/date.png) |
 
-A stacked layout that shows time and date together in one board.
+| Clock and date | Countdown |
+|----------------|-----------|
+| ![Clock and date](docs/screenshots/clock-date.png) | ![Countdown](docs/screenshots/countdown.png) |
 
-Useful config directions:
+| Next event | Event list |
+|------------|------------|
+| ![Next event](docs/screenshots/upcoming-events.png) | ![Event list](docs/screenshots/upcoming-events-list.png) |
 
-- separate `timeFormat` and `dateFormat`
-- per-line colour overrides
-- compact versus spacious stacked layout
-- date size ratio relative to time
+## Development
 
-### Countdown board
-
-A board that counts down to a target date/time.
-
-Possible behaviours:
-
-- target as absolute date/time
-- display in days/hours/minutes/seconds
-- end-of-countdown state
-- optional label for the target event
-
-### Upcoming calendar events
-
-A board that shows the next event or a short list of upcoming events.
-
-Calendar/event boards should consume a shared event type while datasource implementations vary by source, for example:
-
-- iCal / ICS feeds
-- CalDAV
-- other calendar sources if we add them later
-
-Questions to settle:
-
-- shared event data shape across calendar datasources
-- polling vs push update model per datasource type
-- how far ahead to look for events
-- how far back the query window should extend for ongoing events
-- how all-day events should render
-- when to add CalDAV alongside the initial iCal backend
-
-### Other temporal boards worth considering
-
-- world clock / timezone board
-- timer / stopwatch board
-- elapsed-time board
-- sunrise / sunset board if we decide that belongs here
-
-## Progress tracker
-
-- [x] Plugin scaffolding
-- [x] Digital clock board
-- [x] Date board
-- [x] Combined clock + date board
-- [x] Countdown board
-- [ ] Upcoming events board
-- [x] Calendar datasource abstraction
-- [x] Calendar backend support (`iCal`, `CalDAV`, etc.)
-- [ ] Config examples and screenshots
-
-## Notes
-
-The goal is to keep the board implementations small and composable so the main app can mix and match temporal boards without special-case logic.
-
-Calendar datasources are expected to be live and refresh in the background. `ical-calendar-events` and `caldav-calendar-events` both use periodic refresh plus `DataChanged()` signaling so event boards can re-render immediately when the event list changes.
-
-For larger calendars, prefer `caldav-calendar-events` where possible. It can query only a bounded time window on the server, which is materially cheaper than repeatedly downloading and parsing a multi-year ICS feed on a Raspberry Pi. The ICS datasource now uses conditional HTTP requests (`ETag` / `Last-Modified`), skips re-parsing unchanged local files, and supports a `maxBytes` guard to cap feed size.
-
-Example datasource config for an iCal feed:
-
-```json
-{
-  "id": "family-calendar",
-  "plugin": "udb-plugin-temporal",
-  "datasourceId": "ical-calendar-events",
-  "config": {
-    "url": "https://example.com/calendar.ics",
-    "refreshSeconds": 300,
-    "maxBytes": 8388608,
-    "lookAheadDays": 14,
-    "maxEvents": 5
-  }
-}
+```sh
+make check       # build, tests and vet
+make race        # race detector
+make screenshots # regenerate README images
 ```
 
-`url` also accepts `webcal://` and `webcals://` feed URLs.
+To verify published dependencies instead of sibling workspace modules, run `GOWORK=off make check` and `GOWORK=off make race`. CI uses this standalone mode.
 
-Example datasource config for a CalDAV calendar:
+## v1.0.0 scope
 
-```json
-{
-  "id": "personal-calendar",
-  "plugin": "udb-plugin-temporal",
-  "datasourceId": "caldav-calendar-events",
-  "config": {
-    "endpoint": "https://cal.example.com/dav/",
-    "calendarName": "Personal",
-    "username": "alice",
-    "password": "secret",
-    "refreshSeconds": 300,
-    "lookBackDays": 1,
-    "lookAheadDays": 14,
-    "maxEvents": 5
-  }
-}
-```
+Implemented: the five boards above, a shared calendar event contract, polling with immediate change notifications, ICS and CalDAV backends, outage recovery, config examples, rendered screenshots, and automated checks.
+
+Before tagging v1.0.0, complete a real-server CalDAV smoke test and a physical Raspberry Pi display check. Automated CalDAV tests cover authentication, discovery, calendar selection, bounded REPORT requests and response conversion; they do not establish compatibility with every provider.
+
+World clocks, timers, stopwatches, sunrise/sunset, additional themes and broad locale support are deferred. See the configuration reference for calendar-format limitations.
+
+## License
+
+GPL-3.0; see [LICENSE](LICENSE).
