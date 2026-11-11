@@ -26,6 +26,11 @@ import (
 //   - labelColour:       hex colour for the label line
 //   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
 //   - padding:           padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle:         style for the countdown line: "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
+//   - fontScale:         integer countdown scale (default 0, automatic)
+//   - labelFontStyle:    optional label font style override
+//   - labelFontScale:    optional integer label scale override
+//   - fillScreen:        use zero padding (default false)
 //   - horizontalAlign:   "left", "center", or "right" (default "center")
 //   - verticalAlign:     "top", "center", or "bottom" (default "center")
 //   - showSeconds:       include seconds in the countdown (default true)
@@ -49,6 +54,8 @@ type CountdownBoard struct {
 	labelUppercase   bool
 	labelScale       float64
 	lineGap          int
+	fontOptions      fontOptions
+	labelFontOptions fontOptions
 
 	cachedDims             types.BoardDimensions
 	cachedCountdownFace    font.Face
@@ -109,6 +116,11 @@ func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 		LabelUppercase   *bool    `json:"labelUppercase"`
 		LabelScale       *float64 `json:"labelScale"`
 		LineGap          *int     `json:"lineGap"`
+		FontStyle        string   `json:"fontStyle"`
+		FontScale        *int     `json:"fontScale"`
+		LabelFontStyle   string   `json:"labelFontStyle"`
+		LabelFontScale   *int     `json:"labelFontScale"`
+		FillScreen       *bool    `json:"fillScreen"`
 	}
 	if len(cfg) > 0 {
 		if err := json.Unmarshal(cfg, &parsed); err != nil {
@@ -161,6 +173,18 @@ func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 		}
 		b.padding = parsed.Padding
 	}
+	fontOpts, err := parseFontOptions(parsed.FontStyle, parsed.FontScale, "countdown")
+	if err != nil {
+		return err
+	}
+	labelFontOpts, err := parseFontOptions(parsed.LabelFontStyle, parsed.LabelFontScale, "countdown label")
+	if err != nil {
+		return err
+	}
+	b.fontOptions, b.labelFontOptions = fontOpts, labelFontOpts
+	if parsed.FillScreen != nil {
+		setFillScreen(&b.padding, *parsed.FillScreen)
+	}
 	if parsed.HorizontalAlign != "" {
 		if !isHorizontalAlign(parsed.HorizontalAlign) {
 			return fmt.Errorf("countdown: invalid horizontalAlign %q", parsed.HorizontalAlign)
@@ -201,8 +225,7 @@ func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 	if err := validateBoardDimensions(dimensions, b.padding); err != nil {
 		return err
 	}
-	b.buildCache(dimensions)
-	return nil
+	return b.buildCache(dimensions)
 }
 
 func (b *CountdownBoard) Render() types.AnimationFrame {
@@ -260,7 +283,7 @@ func (b *CountdownBoard) Render() types.AnimationFrame {
 	return types.AnimationFrame{Img: img, Duration: delay}
 }
 
-func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
+func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) error {
 	if b.cachedCountdownFace != nil {
 		b.cachedCountdownFace.Close()
 	}
@@ -278,16 +301,24 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 	countdownSample := maxCountdownSample(formatCountdownText(b.target.Sub(time.Now()), b.showSeconds, b.expiredText), b.showSeconds, b.expiredText)
 	labelText := b.renderLabel()
 	if labelText == "" {
-		b.cachedCountdownFace = findTextFace(countdownSample, b.cachedInner.Dx(), b.cachedInner.Dy())
+		face, err := configuredTextFace(countdownSample, b.cachedInner.Dx(), b.cachedInner.Dy(), b.fontOptions)
+		if err != nil {
+			return fmt.Errorf("countdown: %w", err)
+		}
+		b.cachedCountdownFace = face
 		metrics := b.cachedCountdownFace.Metrics()
 		b.cachedCountdownAscent = metrics.Ascent.Ceil()
 		b.cachedCountdownDescent = metrics.Descent.Ceil()
 		b.cachedCountdownHeight = (metrics.Ascent + metrics.Descent).Ceil()
 		b.cachedCombinedHeight = b.cachedCountdownHeight
-		return
+		return nil
 	}
 
-	b.cachedCountdownFace, b.cachedLabelFace = findWrappedStackedTextFaces(countdownSample, labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), b.labelScale, b.lineGap)
+	countdownFace, labelFace, err := configuredStackedTextFaces(countdownSample, labelText, b.cachedInner.Dx(), b.cachedInner.Dy(), b.labelScale, b.lineGap, b.fontOptions, b.labelFontOptions, true)
+	if err != nil {
+		return fmt.Errorf("countdown: %w", err)
+	}
+	b.cachedCountdownFace, b.cachedLabelFace = countdownFace, labelFace
 
 	countdownMetrics := b.cachedCountdownFace.Metrics()
 	labelMetrics := b.cachedLabelFace.Metrics()
@@ -310,6 +341,7 @@ func (b *CountdownBoard) buildCache(dimensions types.BoardDimensions) {
 	if len(b.cachedLabelLines) > 0 {
 		b.cachedCombinedHeight += b.lineGap + len(b.cachedLabelLines)*b.cachedLabelHeight + (len(b.cachedLabelLines)-1)*b.lineGap
 	}
+	return nil
 }
 
 func (b *CountdownBoard) renderLabel() string {

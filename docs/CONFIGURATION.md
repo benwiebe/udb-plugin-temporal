@@ -14,10 +14,39 @@ These settings apply to `digital-clock`, `date`, `clock-date` and `countdown`:
 | `colour` | `#FFFFFF` | Text colour; fallback for both lines on stacked boards |
 | `backgroundColour` | `#000000` | Background colour |
 | `padding` | 10% of width and height | Nonnegative pixel padding on each side |
+| `fillScreen` | `false` | Use zero padding; when `true`, overrides `padding` |
+| `fontStyle` | `auto` | `auto`, `dotMatrix` (5×7 text), `scoreboard` (3×7 digits), `condensed` (3×5 text), `outlined` (outlined 5×7 digits), `silkscreenBold`, or `pixelifySansBold` |
+| `fontScale` | `0` (automatic) | Positive integer pixel scale; bold text faces are rasterized and enlarged in hard-edged pixel blocks; vertical overflow is an initialization error, while long lines are still shortened |
 | `horizontalAlign` | `center` | `left`, `center`, or `right` |
 | `verticalAlign` | `center` | `top`, `center`, or `bottom` |
 
-Colours accept six-digit RGB hex values with or without `#`. Font scales are integer pixel multiples; requested ratios are approximate. Small displays automatically use condensed bitmap glyphs where needed. Invalid dimensions or padding that leaves no usable text area fail initialization.
+Colours accept six-digit RGB hex values with or without `#`. Font scales are integer pixel multiples; requested ratios are approximate. The bold faces use their own base raster sizes, so scale `1` does not have identical dimensions across styles. Small displays automatically use condensed bitmap glyphs where needed. Invalid dimensions or padding that leaves no usable text area fail initialization.
+
+`silkscreenBold` and `pixelifySansBold` are full-text faces, unlike the numeric-only `outlined` style. They can render mixed-case text, digits, and punctuation; use the explicit style on any temporal board and set `fontScale` to `0` or omit it to fit the chosen face automatically. These shared `udb-plugin-library` styles are available to any plugin on v0.8.0 or later. Their SIL Open Font License notices are included with the library assets: [Silkscreen](https://github.com/benwiebe/udb-plugin-library/blob/main/fonts/assets/Silkscreen/OFL.txt) and [Pixelify Sans](https://github.com/benwiebe/udb-plugin-library/blob/main/fonts/assets/Pixelify_Sans/OFL.txt). The fonts are bundled from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/silkscreen) and [Pixelify Sans](https://github.com/eifetx/Pixelify-Sans).
+
+For example, a `date` board can try Pixelify Sans Bold with automatic sizing and no padding:
+
+```json
+{
+  "format": "Monday, Jan 2",
+  "fontStyle": "pixelifySansBold",
+  "fillScreen": true
+}
+```
+
+The font settings also apply to `upcoming-events`; that board keeps its fixed scale-1 default when no font setting is given. Stacked boards use `fontStyle` and `fontScale` for their primary line. `clock-date` accepts `dateFontStyle` and `dateFontScale`, while `countdown` accepts `labelFontStyle` and `labelFontScale`; without a secondary `fontScale`, the existing `dateScale` or `labelScale` ratio remains in effect. A style override without a scale still fits automatically. `fontScale: 0` is equivalent to automatic sizing.
+
+For example, this uses large outlined digits with no padding, inspired by a clock-and-status display:
+
+```json
+{
+  "format": "15:04",
+  "fontStyle": "outlined",
+  "fontScale": 2,
+  "fillScreen": true,
+  "colour": "#45E6DD"
+}
+```
 
 Time layouts use Go's reference time, `Mon Jan 2 15:04:05 MST 2006`. For example, `15:04` is a 24-hour clock, `3:04 PM` is a 12-hour clock, and `Monday, January 2` is a long date. Formats are Go layouts, not `strftime` patterns. Month and weekday names are English. The pixel fonts primarily support ASCII and render unsupported characters with a fallback glyph.
 
@@ -47,6 +76,8 @@ The date refreshes at least once per minute and at the next local midnight.
 | `blinkColon` | `true` | Blink separators in the time line |
 | `dateUppercase` | `false` | Uppercase the date |
 | `dateScale` | `0.45` | Positive date scale relative to time |
+| `dateFontStyle` | `fontStyle` / automatic | Optional date-line style override |
+| `dateFontScale` | `dateScale` ratio | Optional absolute date-line pixel scale |
 | `lineGap` | `2` | Nonnegative gap in pixels |
 
 ### Countdown
@@ -60,6 +91,8 @@ The date refreshes at least once per minute and at the next local midnight.
 | `expiredText` | `NOW` | Text after the target is reached |
 | `labelUppercase` | `false` | Uppercase the label |
 | `labelScale` | `0.35` | Positive label scale relative to countdown |
+| `labelFontStyle` | `fontStyle` / automatic | Optional label style override |
+| `labelFontScale` | `labelScale` ratio | Optional absolute label pixel scale |
 | `lineGap` | `2` | Nonnegative gap in pixels |
 
 Zone-less targets use `timezone`, or the system local timezone. RFC3339 offsets are authoritative. Countdown days represent 24-hour intervals. Labels wrap and are shortened when they exceed the available height. Disabling seconds still schedules a refresh at expiry rather than waiting for the next full minute.
@@ -80,6 +113,9 @@ Zone-less targets use `timezone`, or the system local timezone. RFC3339 offsets 
 | `timeColour` | `#64B4FF` | Date/time and status colour |
 | `backgroundColour` | `#000000` | Background colour |
 | `padding` | 10% of width and height | Nonnegative pixel padding |
+| `fillScreen` | `false` | Use zero padding; when `true`, overrides `padding` |
+| `fontStyle` | `auto` | `auto`, `dotMatrix`, `scoreboard`, `condensed`, `outlined`, `silkscreenBold`, or `pixelifySansBold` |
+| `fontScale` | `0` (automatic) | Positive integer pixel scale; must leave capacity for an event and title |
 
 The board requires at least 11 pixels of usable height for a date/time and title. Long titles wrap, then end in `...` when necessary. The board re-renders every second and immediately after a datasource change. Ongoing timed events display `Now` and their end time; all-day events display `All day`. All-day dates retain the source calendar's timezone rather than shifting to another date in the display timezone.
 

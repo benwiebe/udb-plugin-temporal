@@ -1,8 +1,10 @@
 # UDB Temporal
 
-Time and calendar boards for [UDB](https://github.com/benwiebe/udb-core), a plugin-based runtime for Raspberry Pi LED matrix displays. Boards render with bitmap pixel fonts and can be previewed through UDB's HTTP display without hardware.
+Time and calendar boards for [UDB](https://github.com/benwiebe/udb-core), a plugin-based runtime for Raspberry Pi LED matrix displays. Boards render with bitmap pixel fonts and optional bold text faces, and can be previewed through UDB's HTTP display without hardware.
 
-Requires Go 1.26.1 or later and `udb-plugin-library v0.7.0` or later. Plugins are normal Go packages compiled into UDB; there are no runtime `.so` files.
+Clock and text boards can use automatic or explicit bitmap fonts, bold Silkscreen or Pixelify Sans text faces, integer scales, and zero-padding full-screen layouts. The outlined numeric style is suited to large clocks with smaller secondary text; see the [font configuration examples](docs/CONFIGURATION.md#common-time-board-settings).
+
+Requires Go 1.26.1 or later and `udb-plugin-library v0.8.0` or later. Plugins are normal Go packages compiled into UDB; there are no runtime `.so` files.
 
 ## Boards and datasources
 

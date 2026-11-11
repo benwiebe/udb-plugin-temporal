@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"image"
 	"image/color"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/benwiebe/udb-plugin-library/fonts"
 	"github.com/benwiebe/udb-plugin-library/types"
 	"github.com/benwiebe/udb-plugin-temporal/datasources"
 	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
 )
 
 type testDatasource struct {
@@ -248,5 +251,149 @@ func TestAllDayDateDoesNotShiftWithDisplayTimezone(t *testing.T) {
 	event := datasources.CalendarEvent{AllDay: true, Start: time.Date(2030, 1, 2, 0, 0, 0, 0, time.UTC), End: time.Date(2030, 1, 3, 0, 0, 0, 0, time.UTC)}
 	if got := b.eventWhen(event, now); got != "Tomorrow All day" {
 		t.Fatalf("all-day date shifted: %s", got)
+	}
+}
+
+func TestConfigurableFontsAndFullScreenClock(t *testing.T) {
+	now := time.Date(2030, 1, 1, 12, 34, 10, 0, time.UTC)
+	ds := &testDatasource{kind: datasources.CurrentTimeType, data: now}
+	b := NewDigitalClockBoard()
+	if err := b.Init(json.RawMessage(`{"format":"15:04","fontStyle":"outlined","fontScale":2,"fillScreen":true}`), ds, types.BoardDimensions{Width: 64, Height: 32}); err != nil {
+		t.Fatal(err)
+	}
+	if b.cachedInner != image.Rect(0, 0, 64, 32) {
+		t.Fatalf("fillScreen did not remove padding: %v", b.cachedInner)
+	}
+	if got := b.cachedFace.Metrics().Height.Ceil(); got != 14 {
+		t.Fatalf("outlined font scale = %d pixels high, want 14", got)
+	}
+	first := b.Render()
+	second := b.Render()
+	if first.Duration != 500*time.Millisecond || !reflect.DeepEqual(first.Img, second.Img) {
+		t.Fatal("outlined clock is not stable while the colon is visible")
+	}
+	ds.data = now.Add(time.Second)
+	if reflect.DeepEqual(first.Img, b.Render().Img) {
+		t.Fatal("blinking colon did not change the rendered clock")
+	}
+
+	face, err := configuredTextFace("N", 64, 32, fontOptions{style: fonts.PixelFontDotMatrix, styleSet: true, scale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer face.Close()
+	_, mask, _, _, ok := face.Glyph(fixed.P(0, 7), 'N')
+	if !ok || mask.Bounds().Dx() != 5 || mask.Bounds().Dy() != 7 {
+		t.Fatalf("dot-matrix N is not a 5x7 glyph: %v", mask.Bounds())
+	}
+	auto := NewDigitalClockBoard()
+	if err := auto.Init(json.RawMessage(`{"fontStyle":"dotMatrix","fillScreen":true}`), ds, types.BoardDimensions{Width: 64, Height: 32}); err != nil {
+		t.Fatal(err)
+	}
+	if auto.cachedFace.Metrics().Height.Ceil() <= 7 {
+		t.Fatal("automatic font size did not grow to use the available screen")
+	}
+}
+
+func TestBoldFullTextPixelFonts(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		style fonts.PixelFontStyle
+	}{
+		{name: "Silkscreen Bold", style: fonts.PixelFontSilkscreenBold},
+		{name: "Pixelify Sans Bold", style: fonts.PixelFontPixelifySansBold},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options := fontOptions{style: test.style, styleSet: true}
+			face, err := configuredTextFace("Nn8:04", 128, 64, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer face.Close()
+			if face.Metrics().Height.Ceil() > 64 || font.MeasureString(face, "Nn8:04").Ceil() > 128 {
+				t.Fatalf("automatic fit produced metrics %+v", face.Metrics())
+			}
+			for _, r := range []rune{'N', 'n', '8', ':'} {
+				bounds, mask, _, _, ok := face.Glyph(fixed.P(0, face.Metrics().Ascent.Ceil()), r)
+				if !ok || bounds.Empty() || mask == nil {
+					t.Fatalf("glyph %q is missing: bounds=%v", r, bounds)
+				}
+			}
+		})
+	}
+}
+
+func TestBoldFontsOnStackedAndEventBoards(t *testing.T) {
+	now := time.Date(2030, 1, 1, 12, 34, 10, 0, time.UTC)
+	ds := &testDatasource{kind: datasources.CurrentTimeType, data: now}
+	stacked := NewClockDateBoard()
+	if err := stacked.Init(json.RawMessage(`{"fontStyle":"silkscreenBold","fontScale":1,"dateFontStyle":"pixelifySansBold","dateFontScale":1,"fillScreen":true}`), ds, types.BoardDimensions{Width: 128, Height: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if stacked.cachedCombinedHeight > stacked.cachedInner.Dy() {
+		t.Fatalf("stacked bold faces overflow the display: %d > %d", stacked.cachedCombinedHeight, stacked.cachedInner.Dy())
+	}
+	if stacked.Render().Img.Bounds().Dx() != 128 {
+		t.Fatal("stacked bold faces did not render")
+	}
+
+	calendar := &testDatasource{kind: datasources.CalendarEventsType, data: datasources.CalendarEventsData{LastUpdated: now}}
+	events := NewUpcomingEventsBoard()
+	if err := events.Init(json.RawMessage(`{"fontStyle":"pixelifySansBold","fontScale":1,"fillScreen":true}`), calendar, types.BoardDimensions{Width: 128, Height: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if got := events.Render().Img.Bounds(); got != image.Rect(0, 0, 128, 64) {
+		t.Fatalf("event board rendered bounds %v", got)
+	}
+	if err := NewDigitalClockBoard().Init(json.RawMessage(`{"fontStyle":"pixelifySansBold","fontScale":4,"fillScreen":true}`), ds, types.BoardDimensions{Width: 64, Height: 32}); err == nil {
+		t.Fatal("accepted an explicit bold face scale that exceeds the display height")
+	}
+}
+
+func TestStackedFontOverridesAndScaleValidation(t *testing.T) {
+	ds := &testDatasource{kind: datasources.CurrentTimeType, data: time.Date(2030, 1, 1, 12, 34, 10, 0, time.UTC)}
+	b := NewClockDateBoard()
+	if err := b.Init(json.RawMessage(`{"fontStyle":"outlined","fontScale":2,"dateFontStyle":"dotMatrix","dateFontScale":1,"padding":0}`), ds, types.BoardDimensions{Width: 128, Height: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.cachedTimeFace.(*outlinedFace); !ok {
+		t.Fatalf("time line has face type %T, want outlined", b.cachedTimeFace)
+	}
+	if b.cachedTimeHeight != 14 || b.cachedDateHeight != 7 || b.cachedCombinedHeight > b.cachedInner.Dy() {
+		t.Fatalf("unexpected stacked font dimensions: time=%d date=%d total=%d", b.cachedTimeHeight, b.cachedDateHeight, b.cachedCombinedHeight)
+	}
+	if err := NewDigitalClockBoard().Init(json.RawMessage(`{"fontScale":5,"fillScreen":true}`), ds, types.BoardDimensions{Width: 64, Height: 32}); err == nil {
+		t.Fatal("accepted a font scale that exceeds the display height")
+	}
+	if err := NewDateBoard().Init(json.RawMessage(`{"fontStyle":"not-a-font"}`), ds, types.BoardDimensions{Width: 64, Height: 32}); err == nil {
+		t.Fatal("accepted an unknown font style")
+	}
+}
+
+func TestUpcomingEventsExplicitFontCapacity(t *testing.T) {
+	ds := &testDatasource{kind: datasources.CalendarEventsType, data: datasources.CalendarEventsData{LastUpdated: time.Now()}}
+	b := NewUpcomingEventsBoard()
+	if err := b.Init(json.RawMessage(`{"fontStyle":"dotMatrix","fontScale":3,"fillScreen":true}`), ds, types.BoardDimensions{Width: 128, Height: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if (b.inner.Dy()+1)/(b.face.Metrics().Height.Ceil()+1) < 2 {
+		t.Fatal("event font leaves no room for an event and title")
+	}
+	if err := NewUpcomingEventsBoard().Init(json.RawMessage(`{"fontStyle":"dotMatrix","fontScale":5,"fillScreen":true}`), ds, types.BoardDimensions{Width: 128, Height: 64}); err == nil {
+		t.Fatal("accepted event font without capacity for an event and title")
+	}
+}
+
+func TestCountdownFontOverrides(t *testing.T) {
+	ds := &testDatasource{kind: datasources.CurrentTimeType, data: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}
+	b := NewCountdownBoard()
+	if err := b.Init(json.RawMessage(`{"target":"2030-01-06T00:00:00Z","label":"Birthday","fontStyle":"outlined","fontScale":2,"labelFontStyle":"dotMatrix","labelFontScale":1,"padding":0}`), ds, types.BoardDimensions{Width: 128, Height: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.cachedCountdownFace.(*outlinedFace); !ok {
+		t.Fatalf("countdown has face type %T, want outlined", b.cachedCountdownFace)
+	}
+	if b.cachedCountdownHeight != 14 || b.cachedLabelHeight != 7 || b.cachedCombinedHeight > b.cachedInner.Dy() {
+		t.Fatalf("unexpected countdown font dimensions: countdown=%d label=%d total=%d", b.cachedCountdownHeight, b.cachedLabelHeight, b.cachedCombinedHeight)
 	}
 }

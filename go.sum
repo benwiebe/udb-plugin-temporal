@@ -1,5 +1,7 @@
 github.com/benwiebe/udb-plugin-library v0.7.0 h1:CguYVQY1XuY7RePVJkBqGGl0mPDXAwig4X3Es9LVmbE=
 github.com/benwiebe/udb-plugin-library v0.7.0/go.mod h1:DfNYk+JJkgn8HI0btwl++Z62DSLx2NFRRYBGYG+o4SA=
+github.com/benwiebe/udb-plugin-library v0.8.0 h1:LbOBIko75ukyzvA9rwcppfmynZpyoEWTUaF/s/3RRdA=
+github.com/benwiebe/udb-plugin-library v0.8.0/go.mod h1:yUaJZELm0pU63M4wT/8DZKwG45ZNJO8DLPw+0MMM+/U=
 github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6/go.mod h1:BEksegNspIkjCQfmzWgsgbu6KdeJ/4LwUZs7DMBzjzw=
 github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608 h1:5XWaET4YAcppq3l1/Yh2ay5VmQjUdq6qhJuucdGbmOY=
 github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608/go.mod h1:BEksegNspIkjCQfmzWgsgbu6KdeJ/4LwUZs7DMBzjzw=
@@ -12,3 +14,5 @@ github.com/teambition/rrule-go v1.8.2 h1:lIjpjvWTj9fFUZCmuoVDrKVOtdiyzbzc93qTmRV
 github.com/teambition/rrule-go v1.8.2/go.mod h1:Ieq5AbrKGciP1V//Wq8ktsTXwSwJHDD5mD/wLBGl3p4=
 golang.org/x/image v0.42.0 h1:1gSs6ehNWXLbkHBIPcWztk3D/6aIA/8hauiAYtlodVY=
 golang.org/x/image v0.42.0/go.mod h1:rrpelvGFt+kLPAjPM4HeWPgrl0FtafueU//e5N0qk/Q=
+golang.org/x/text v0.38.0 h1:sXmwo9DwP3OK9EZ7PqAdaooSGozfl/3a6/xJcbzPRhE=
+golang.org/x/text v0.38.0/go.mod h1:YXZt3QhHUKYT53r2lLKFIVi6Ao1jdzrTR/KQ09qyxF4=

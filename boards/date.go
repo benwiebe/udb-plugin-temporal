@@ -22,6 +22,9 @@ import (
 //   - colour:            hex colour for the text, e.g. "#FFFFFF" (default white)
 //   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
 //   - padding:           padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle:         "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
+//   - fontScale:         integer pixel scale (default 0, automatic)
+//   - fillScreen:        use zero padding (default false)
 //   - horizontalAlign:   "left", "center", or "right" (default "center")
 //   - verticalAlign:     "top", "center", or "bottom" (default "center")
 //   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
@@ -36,6 +39,7 @@ type DateBoard struct {
 	location         *time.Location
 	padding          *int
 	uppercase        bool
+	fontOptions      fontOptions
 
 	cachedDims    types.BoardDimensions
 	cachedFace    font.Face
@@ -77,6 +81,9 @@ func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimen
 			Colour           string `json:"colour"`
 			BackgroundColour string `json:"backgroundColour"`
 			Padding          *int   `json:"padding"`
+			FontStyle        string `json:"fontStyle"`
+			FontScale        *int   `json:"fontScale"`
+			FillScreen       *bool  `json:"fillScreen"`
 			HorizontalAlign  string `json:"horizontalAlign"`
 			VerticalAlign    string `json:"verticalAlign"`
 			Timezone         string `json:"timezone"`
@@ -108,6 +115,14 @@ func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimen
 			}
 			b.padding = parsed.Padding
 		}
+		fontOpts, err := parseFontOptions(parsed.FontStyle, parsed.FontScale, "date")
+		if err != nil {
+			return err
+		}
+		b.fontOptions = fontOpts
+		if parsed.FillScreen != nil {
+			setFillScreen(&b.padding, *parsed.FillScreen)
+		}
 		if parsed.HorizontalAlign != "" {
 			if !isHorizontalAlign(parsed.HorizontalAlign) {
 				return fmt.Errorf("date: invalid horizontalAlign %q", parsed.HorizontalAlign)
@@ -138,8 +153,7 @@ func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimen
 	if err := validateBoardDimensions(dimensions, b.padding); err != nil {
 		return err
 	}
-	b.buildCache(dimensions)
-	return nil
+	return b.buildCache(dimensions)
 }
 
 func (b *DateBoard) Render() types.AnimationFrame {
@@ -173,7 +187,7 @@ func (b *DateBoard) Render() types.AnimationFrame {
 	return types.AnimationFrame{Img: img, Duration: min(time.Minute, nextMidnight.Sub(t))}
 }
 
-func (b *DateBoard) buildCache(dimensions types.BoardDimensions) {
+func (b *DateBoard) buildCache(dimensions types.BoardDimensions) error {
 	if b.cachedFace != nil {
 		b.cachedFace.Close()
 	}
@@ -181,7 +195,11 @@ func (b *DateBoard) buildCache(dimensions types.BoardDimensions) {
 
 	inner := resolveInnerRect(dimensions, b.padding)
 	ref := widestTimeSample(b.format, b.uppercase, b.location)
-	b.cachedFace = findTextFace(ref, inner.Dx(), inner.Dy())
+	face, err := configuredTextFace(ref, inner.Dx(), inner.Dy(), b.fontOptions)
+	if err != nil {
+		return fmt.Errorf("date: %w", err)
+	}
+	b.cachedFace = face
 
 	m := b.cachedFace.Metrics()
 	b.cachedInner = inner
@@ -190,4 +208,5 @@ func (b *DateBoard) buildCache(dimensions types.BoardDimensions) {
 	b.cachedHeight = (m.Ascent + m.Descent).Ceil()
 	b.cachedSrc = image.NewUniform(b.colour)
 	b.cachedBg = image.NewUniform(b.backgroundColour)
+	return nil
 }

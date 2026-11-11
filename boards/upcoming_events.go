@@ -29,6 +29,7 @@ type UpcomingEventsBoard struct {
 	showLocation                         bool
 	padding                              *int
 	colour, timeColour, backgroundColour color.Color
+	fontOptions                          fontOptions
 	face                                 font.Face
 	now                                  func() time.Time
 }
@@ -58,6 +59,9 @@ func (b *UpcomingEventsBoard) Init(cfg json.RawMessage, ds types.Datasource, dim
 		EmptyText        string `json:"emptyText"`
 		ShowLocation     *bool  `json:"showLocation"`
 		Padding          *int   `json:"padding"`
+		FontStyle        string `json:"fontStyle"`
+		FontScale        *int   `json:"fontScale"`
+		FillScreen       *bool  `json:"fillScreen"`
 		Colour           string `json:"colour"`
 		TimeColour       string `json:"timeColour"`
 		BackgroundColour string `json:"backgroundColour"`
@@ -93,6 +97,14 @@ func (b *UpcomingEventsBoard) Init(cfg json.RawMessage, ds types.Datasource, dim
 		b.showLocation = *parsed.ShowLocation
 	}
 	b.padding = parsed.Padding
+	fontOpts, err := parseFontOptions(parsed.FontStyle, parsed.FontScale, "upcoming-events")
+	if err != nil {
+		return err
+	}
+	b.fontOptions = fontOpts
+	if parsed.FillScreen != nil {
+		setFillScreen(&b.padding, *parsed.FillScreen)
+	}
 	for _, setting := range []struct {
 		value  string
 		target *color.Color
@@ -115,11 +127,24 @@ func (b *UpcomingEventsBoard) Init(cfg json.RawMessage, ds types.Datasource, dim
 	if b.face != nil {
 		b.face.Close()
 	}
-	style := fonts.PixelFontDotMatrix
-	if b.inner.Dx() < 80 || b.inner.Dy() < 32 {
-		style = fonts.PixelFontCondensed
+	if hasFontOptions(b.fontOptions) {
+		maxFontHeight := (b.inner.Dy()+1)/2 - 1
+		b.face, err = configuredTextFace("Event", b.inner.Dx(), maxFontHeight, b.fontOptions)
+		if err != nil {
+			return fmt.Errorf("upcoming-events: %w", err)
+		}
+	} else {
+		style := fonts.PixelFontDotMatrix
+		if b.inner.Dx() < 80 || b.inner.Dy() < 32 {
+			style = fonts.PixelFontCondensed
+		}
+		b.face = fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: style, Scale: 1, LetterSpacing: -1})
 	}
-	b.face = fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: style, Scale: 1, LetterSpacing: -1})
+	if (b.inner.Dy()+1)/(b.face.Metrics().Height.Ceil()+1) < 2 {
+		b.face.Close()
+		b.face = nil
+		return fmt.Errorf("upcoming-events: font settings leave insufficient height for an event and title")
+	}
 	return nil
 }
 

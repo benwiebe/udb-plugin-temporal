@@ -26,6 +26,11 @@ import (
 //   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
 //   - blinkColon:        toggle colon separators off on odd seconds in the time line (default true)
 //   - padding:           padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle:         style for the time line: "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
+//   - fontScale:         integer time-line scale (default 0, automatic)
+//   - dateFontStyle:     optional date-line font style override
+//   - dateFontScale:     optional integer date-line scale override
+//   - fillScreen:        use zero padding (default false)
 //   - horizontalAlign:   "left", "center", or "right" (default "center")
 //   - verticalAlign:     "top", "center", or "bottom" (default "center")
 //   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
@@ -47,6 +52,8 @@ type ClockDateBoard struct {
 	dateUppercase    bool
 	dateScale        float64
 	lineGap          int
+	fontOptions      fontOptions
+	dateFontOptions  fontOptions
 
 	cachedDims           types.BoardDimensions
 	cachedTimeFace       font.Face
@@ -109,6 +116,11 @@ func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 			DateUppercase    *bool    `json:"dateUppercase"`
 			DateScale        *float64 `json:"dateScale"`
 			LineGap          *int     `json:"lineGap"`
+			FontStyle        string   `json:"fontStyle"`
+			FontScale        *int     `json:"fontScale"`
+			DateFontStyle    string   `json:"dateFontStyle"`
+			DateFontScale    *int     `json:"dateFontScale"`
+			FillScreen       *bool    `json:"fillScreen"`
 		}
 		if err := json.Unmarshal(cfg, &parsed); err != nil {
 			return err
@@ -158,6 +170,18 @@ func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 			}
 			b.padding = parsed.Padding
 		}
+		fontOpts, err := parseFontOptions(parsed.FontStyle, parsed.FontScale, "clock-date")
+		if err != nil {
+			return err
+		}
+		dateFontOpts, err := parseFontOptions(parsed.DateFontStyle, parsed.DateFontScale, "clock-date date line")
+		if err != nil {
+			return err
+		}
+		b.fontOptions, b.dateFontOptions = fontOpts, dateFontOpts
+		if parsed.FillScreen != nil {
+			setFillScreen(&b.padding, *parsed.FillScreen)
+		}
 		if parsed.HorizontalAlign != "" {
 			if !isHorizontalAlign(parsed.HorizontalAlign) {
 				return fmt.Errorf("clock-date: invalid horizontalAlign %q", parsed.HorizontalAlign)
@@ -203,8 +227,7 @@ func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 	if resolveInnerRect(dimensions, b.padding).Dy() < 10+b.lineGap {
 		return fmt.Errorf("clock-date: insufficient height for two text lines and lineGap")
 	}
-	b.buildCache(dimensions)
-	return nil
+	return b.buildCache(dimensions)
 }
 
 func (b *ClockDateBoard) Render() types.AnimationFrame {
@@ -261,7 +284,7 @@ func (b *ClockDateBoard) Render() types.AnimationFrame {
 	return types.AnimationFrame{Img: img, Duration: dur}
 }
 
-func (b *ClockDateBoard) buildCache(dimensions types.BoardDimensions) {
+func (b *ClockDateBoard) buildCache(dimensions types.BoardDimensions) error {
 	if b.cachedTimeFace != nil {
 		b.cachedTimeFace.Close()
 	}
@@ -273,7 +296,11 @@ func (b *ClockDateBoard) buildCache(dimensions types.BoardDimensions) {
 	inner := resolveInnerRect(dimensions, b.padding)
 	timeRef := widestTimeSample(b.timeFormat, false, b.location)
 	dateRef := widestTimeSample(b.dateFormat, b.dateUppercase, b.location)
-	b.cachedTimeFace, b.cachedDateFace = findStackedTextFaces(timeRef, dateRef, inner.Dx(), inner.Dy(), b.dateScale, b.lineGap)
+	timeFace, dateFace, err := configuredStackedTextFaces(timeRef, dateRef, inner.Dx(), inner.Dy(), b.dateScale, b.lineGap, b.fontOptions, b.dateFontOptions, false)
+	if err != nil {
+		return fmt.Errorf("clock-date: %w", err)
+	}
+	b.cachedTimeFace, b.cachedDateFace = timeFace, dateFace
 
 	timeMetrics := b.cachedTimeFace.Metrics()
 	dateMetrics := b.cachedDateFace.Metrics()
@@ -289,4 +316,5 @@ func (b *ClockDateBoard) buildCache(dimensions types.BoardDimensions) {
 	b.cachedTimeSrc = image.NewUniform(b.timeColour)
 	b.cachedDateSrc = image.NewUniform(b.dateColour)
 	b.cachedBg = image.NewUniform(b.backgroundColour)
+	return nil
 }
