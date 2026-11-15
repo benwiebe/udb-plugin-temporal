@@ -1,3 +1,5 @@
+// Package datasources provides common calendar data structures, recurrence expansion,
+// and polling machinery used by iCalendar (.ics) and CalDAV datasources.
 package datasources
 
 import (
@@ -13,23 +15,26 @@ import (
 	"github.com/teambition/rrule-go"
 )
 
+// CalendarEventsType is the datasource type identifier for calendar event feeds.
 const CalendarEventsType = "benwiebe/udb-plugin-temporal/calendar-events"
 
+// CalendarEvent represents a single scheduled event or recurring instance.
 type CalendarEvent struct {
-	ID          string
-	Title       string
-	Start       time.Time
-	End         time.Time
-	AllDay      bool
-	Location    string
-	Description string
+	ID          string    // Unique event identifier (or baseUID/occurrenceID for recurring events)
+	Title       string    // Event summary / title
+	Start       time.Time // Event start time
+	End         time.Time // Event end time
+	AllDay      bool      // True for all-day events
+	Location    string    // Event location string
+	Description string    // Event description text
 }
 
+// CalendarEventsData is the snapshot data returned by GetData() for calendar-events datasources.
 type CalendarEventsData struct {
-	Events      []CalendarEvent
-	LastUpdated time.Time
-	LastError   string // Latest refresh error; empty after a successful refresh.
-	Source      string
+	Events      []CalendarEvent // Sorted list of upcoming events within the active window
+	LastUpdated time.Time       // Timestamp of the last successful data fetch
+	LastError   string          // Description of the most recent refresh failure, or empty on success
+	Source      string          // Configured source URL, file path, or CalDAV endpoint
 }
 
 type calendarEventsPollingConfig struct {
@@ -41,6 +46,8 @@ type calendarEventsPollingConfig struct {
 	Timezone       string `json:"timezone"`
 }
 
+// calendarEventsPollingDatasource provides thread-safe background polling, caching,
+// and change notifications for calendar datasources.
 type calendarEventsPollingDatasource struct {
 	mu              sync.RWMutex
 	data            CalendarEventsData
@@ -251,6 +258,8 @@ func calendarEventsEqual(a, b []CalendarEvent) bool {
 	return true
 }
 
+// convertICalCalendar converts parsed iCalendar components into normalized CalendarEvent structs,
+// handling recurring events, timezone conversions, RECURRENCE-ID overrides, and cancellations.
 func convertICalCalendar(cal *ical.Calendar, location *time.Location, windowStart, windowEnd time.Time) []CalendarEvent {
 	rawEvents := cal.Events()
 	// Detached RECURRENCE-ID components replace (or cancel) a single occurrence.

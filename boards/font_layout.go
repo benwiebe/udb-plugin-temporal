@@ -1,3 +1,5 @@
+// Package boards provides typography selection, scaling, and custom bitmap glyph rendering
+// for temporal boards.
 package boards
 
 import (
@@ -12,8 +14,10 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
+// outlinedFontStyle represents custom 5x7 outlined digits not present in standard fonts.
 const outlinedFontStyle fonts.PixelFontStyle = 100
 
+// fontOptions captures user-configured style and scale preferences for a text element.
 type fontOptions struct {
 	style    fonts.PixelFontStyle
 	styleSet bool
@@ -21,6 +25,7 @@ type fontOptions struct {
 	scaleSet bool
 }
 
+// parseFontOptions parses string fontStyle names and integer fontScale settings into fontOptions.
 func parseFontOptions(style string, scale *int, board string) (fontOptions, error) {
 	options := fontOptions{}
 	if style != "" {
@@ -65,6 +70,7 @@ func hasFontOptions(options fontOptions) bool {
 	return options.styleSet || options.scaleSet
 }
 
+// configuredTextFace selects and scales a font.Face according to user options and bounds.
 func configuredTextFace(text string, maxWidth, maxHeight int, options fontOptions) (font.Face, error) {
 	if !hasFontOptions(options) {
 		return findTextFace(text, maxWidth, maxHeight), nil
@@ -130,6 +136,8 @@ func configuredTextFace(text string, maxWidth, maxHeight int, options fontOption
 	return face, nil
 }
 
+// configuredStackedTextFaces selects top and bottom font faces for two-line displays,
+// taking into account explicit user options, relative scale ratios, line gaps, and bounds.
 func configuredStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, bottomRatio float64, lineGap int, topOptions, bottomOptions fontOptions, wrapBottom bool) (font.Face, font.Face, error) {
 	if !hasFontOptions(topOptions) && !hasFontOptions(bottomOptions) {
 		if wrapBottom {
@@ -216,6 +224,7 @@ func faceAtScale(style fonts.PixelFontStyle, scale int) font.Face {
 	return fonts.GetUdbFonts().PixelFace(fonts.PixelFaceOptions{Style: style, Scale: scale, LetterSpacing: -1})
 }
 
+// outlinedFace implements font.Face for 5x7 custom outlined pixel digits and characters.
 type outlinedFace struct{ scale int }
 
 var outlinedGlyphs = map[rune][]string{

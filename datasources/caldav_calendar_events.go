@@ -13,6 +13,21 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 )
 
+// CalDAVCalendarEventsDatasource connects to a remote CalDAV server over HTTP(S),
+// auto-discovers or targets specific calendars, and queries event instances.
+//
+// Configuration fields (via JSON config):
+//   - endpoint: CalDAV server endpoint URL (e.g. "https://cal.example.com/dav/"). Required.
+//   - calendarPath: explicit CalDAV calendar collection path (e.g. "/dav/calendars/user/work/").
+//   - calendarName: display name of the calendar to auto-discover if calendarPath is omitted.
+//   - username: username for HTTP Basic Authentication.
+//   - password: password or app token for HTTP Basic Authentication.
+//   - refreshSeconds: interval in seconds between polling checks (default 300).
+//   - lookBackDays: number of past days of events to include (default 1).
+//   - lookAheadDays: number of upcoming days of events to query (default 30).
+//   - maxEvents: maximum number of events retained in memory (default 10).
+//   - includeAllDay: whether to include all-day calendar events (default true).
+//   - timezone: IANA timezone identifier for formatting (default system local).
 type CalDAVCalendarEventsDatasource struct {
 	calendarEventsPollingDatasource
 	client       *caldav.Client
@@ -23,24 +38,29 @@ type CalDAVCalendarEventsDatasource struct {
 	password     string
 }
 
+// NewCalDAVCalendarEventsDatasource constructs an uninitialized CalDAVCalendarEventsDatasource.
 func NewCalDAVCalendarEventsDatasource() *CalDAVCalendarEventsDatasource {
 	return &CalDAVCalendarEventsDatasource{
 		calendarEventsPollingDatasource: newCalendarEventsPollingDatasource(),
 	}
 }
 
+// GetId returns the unique datasource identifier ("benwiebe/udb-plugin-temporal/caldav-calendar-events").
 func (d *CalDAVCalendarEventsDatasource) GetId() string {
 	return "benwiebe/udb-plugin-temporal/caldav-calendar-events"
 }
 
+// GetName returns the human-readable display name ("CalDAV Calendar Events").
 func (d *CalDAVCalendarEventsDatasource) GetName() string {
 	return "CalDAV Calendar Events"
 }
 
+// GetType returns the datasource type string (CalendarEventsType).
 func (d *CalDAVCalendarEventsDatasource) GetType() string {
 	return CalendarEventsType
 }
 
+// Init parses configuration, validates endpoint URLs and credentials, and prepares polling parameters.
 func (d *CalDAVCalendarEventsDatasource) Init(cfg json.RawMessage) error {
 	var parsed struct {
 		Endpoint     string `json:"endpoint"`

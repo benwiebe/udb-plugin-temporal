@@ -1,5 +1,6 @@
-// render-examples creates actual board renders for the README, enlarged with
-// nearest-neighbor scaling so the individual LED pixels remain visible.
+// render-examples generates preview screenshots of each temporal board configuration
+// for inclusion in project documentation. Rendered images are scaled using nearest-neighbor
+// interpolation to preserve individual LED pixel clarity.
 package main
 
 import (

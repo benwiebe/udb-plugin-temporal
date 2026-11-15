@@ -17,18 +17,19 @@ import (
 )
 
 // DateBoard displays the current date from a CurrentTimeDatasource.
-// Optional JSON config fields:
-//   - format:            Go time layout string (default "Mon Jan 2")
-//   - colour:            hex colour for the text, e.g. "#FFFFFF" (default white)
-//   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
-//   - padding:           padding in pixels on all sides (default 10% of width/height)
-//   - fontStyle:         "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
-//   - fontScale:         integer pixel scale (default 0, automatic)
-//   - fillScreen:        use zero padding (default false)
-//   - horizontalAlign:   "left", "center", or "right" (default "center")
-//   - verticalAlign:     "top", "center", or "bottom" (default "center")
-//   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
-//   - uppercase:         render the formatted date in uppercase (default false)
+//
+// Configuration fields (via JSON config):
+//   - format: Go time layout string (default "Mon Jan 2"; e.g., "Monday, Jan 2", "2006-01-02")
+//   - colour: hex colour for the text (default "#FFFFFF")
+//   - backgroundColour: hex colour for the background (default "#000000")
+//   - padding: padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle: pixel font style ("auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", "pixelifySansBold")
+//   - fontScale: integer pixel scaling multiplier (default 0, automatic fit)
+//   - fillScreen: when true, removes padding for edge-to-edge rendering (default false)
+//   - horizontalAlign: horizontal text alignment ("left", "center", "right"; default "center")
+//   - verticalAlign: vertical text alignment ("top", "center", "bottom"; default "center")
+//   - timezone: IANA timezone identifier (e.g., "America/Toronto"; default system local)
+//   - uppercase: render the formatted date in all uppercase characters (default false)
 type DateBoard struct {
 	datasource       types.Datasource
 	format           string
@@ -51,18 +52,30 @@ type DateBoard struct {
 	cachedDescent int
 }
 
+// NewDateBoard constructs an uninitialized DateBoard.
 func NewDateBoard() *DateBoard {
 	return &DateBoard{}
 }
 
-func (b *DateBoard) GetId() string   { return "date" }
+// GetId returns the board identifier ("date").
+func (b *DateBoard) GetId() string { return "date" }
+
+// GetName returns the display name ("Date").
 func (b *DateBoard) GetName() string { return "Date" }
+
+// GetSupportedDimensions returns supported dimensions (empty slice allows dynamic sizing).
 func (b *DateBoard) GetSupportedDimensions() []types.BoardDimensions {
 	return []types.BoardDimensions{}
 }
-func (b *DateBoard) GetType() types.BoardType  { return types.BoardTypeDynamic }
+
+// GetType returns the board type (dynamic animation frame generation).
+func (b *DateBoard) GetType() types.BoardType { return types.BoardTypeDynamic }
+
+// GetDatasourceType returns the expected datasource type (CurrentTimeType).
 func (b *DateBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
+// Init parses configuration, validates display dimensions, binds the datasource,
+// and precomputes typography metrics based on the longest potential date string.
 func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
 	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
 		return fmt.Errorf("date: expected a current-time datasource, got %T", datasource)
@@ -156,6 +169,9 @@ func (b *DateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimen
 	return b.buildCache(dimensions)
 }
 
+// Render produces an animation frame displaying the current date.
+// Duration is calculated to expire at local midnight or after 1 second max,
+// ensuring the date promptly flips over at midnight.
 func (b *DateBoard) Render() types.AnimationFrame {
 	t := b.datasource.GetData().(time.Time)
 	if b.location != nil {

@@ -1,3 +1,5 @@
+// Package boards provides geometry calculation, text measurement, truncation,
+// word wrapping, and baseline alignment utilities for board rendering.
 package boards
 
 import (
@@ -13,6 +15,8 @@ import (
 	"golang.org/x/image/font"
 )
 
+// resolveInnerRect calculates the drawable inner rectangle by applying user-defined
+// padding or defaulting to a 10% margin on all sides.
 func resolveInnerRect(dimensions types.BoardDimensions, padding *int) image.Rectangle {
 	marginX := int(float64(dimensions.Width) * 0.10)
 	marginY := int(float64(dimensions.Height) * 0.10)
@@ -33,6 +37,7 @@ func resolveInnerRect(dimensions types.BoardDimensions, padding *int) image.Rect
 	return image.Rect(marginX, marginY, dimensions.Width-marginX, dimensions.Height-marginY)
 }
 
+// findTextFace selects the best-fitting pixel font face for a single line of text.
 func findTextFace(text string, maxWidth, maxHeight int) font.Face {
 	face := fonts.GetUdbFonts().FitPixelFace(text, maxWidth, maxHeight, fonts.PixelFontAuto)
 	if font.MeasureString(face, text).Ceil() > maxWidth || face.Metrics().Height.Ceil() > maxHeight {
@@ -42,6 +47,8 @@ func findTextFace(text string, maxWidth, maxHeight int) font.Face {
 	return face
 }
 
+// validateBoardDimensions ensures that display dimensions are positive and that
+// the configured padding leaves at least 3x5 pixels for text rendering.
 func validateBoardDimensions(dimensions types.BoardDimensions, padding *int) error {
 	if dimensions.Width <= 0 || dimensions.Height <= 0 {
 		return fmt.Errorf("display dimensions must be positive")
@@ -56,6 +63,7 @@ func validateBoardDimensions(dimensions types.BoardDimensions, padding *int) err
 	return nil
 }
 
+// truncateText trims a string and appends "..." if it exceeds maxWidth when rendered with face.
 func truncateText(face font.Face, text string, maxWidth int) string {
 	if font.MeasureString(face, text).Ceil() <= maxWidth {
 		return text
@@ -97,6 +105,7 @@ func widestTimeSample(layout string, uppercase bool, location *time.Location) st
 	return widest
 }
 
+// findStackedTextFaces iteratively finds proportional font faces for two stacked lines of text.
 func findStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, bottomScale float64, lineGap int) (font.Face, font.Face) {
 	if bottomScale <= 0 {
 		bottomScale = 0.5
@@ -166,8 +175,8 @@ func findStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, b
 	return topFace, bottomFace
 }
 
-// Try pixel styles and integer scales together so wrapping and relative label
-// size participate in the fit, rather than shrinking only the countdown later.
+// findWrappedStackedTextFaces tries font styles and scales together so multi-line wrapped secondary
+// text and relative sizing participate in fitting within the maximum bounding dimensions.
 func findWrappedStackedTextFaces(topText, bottomText string, maxWidth, maxHeight int, bottomRatio float64, lineGap int) (font.Face, font.Face) {
 	bestTop, bestBottom, bestHeight := font.Face(nil), font.Face(nil), 0
 	bestRatioError := math.Inf(1)
@@ -223,6 +232,7 @@ func isVerticalAlign(v string) bool {
 	}
 }
 
+// alignedX returns the left X coordinate for text of textWidth within inner according to align ("left", "center", "right").
 func alignedX(inner image.Rectangle, textWidth int, align string) int {
 	switch align {
 	case "left":
@@ -234,6 +244,7 @@ func alignedX(inner image.Rectangle, textWidth int, align string) int {
 	}
 }
 
+// alignedBaselineY returns the vertical baseline Y coordinate for a text line within inner according to align.
 func alignedBaselineY(inner image.Rectangle, ascent, height, descent int, align string) int {
 	switch align {
 	case "top":
@@ -245,6 +256,7 @@ func alignedBaselineY(inner image.Rectangle, ascent, height, descent int, align 
 	}
 }
 
+// alignedBlockTop returns the top Y coordinate for a multi-line block of blockHeight within inner according to align.
 func alignedBlockTop(inner image.Rectangle, blockHeight int, align string) int {
 	switch align {
 	case "top":
@@ -256,6 +268,7 @@ func alignedBlockTop(inner image.Rectangle, blockHeight int, align string) int {
 	}
 }
 
+// wrapTextLines splits text into multiple lines bounded by maxWidth using greedy word wrapping.
 func wrapTextLines(face font.Face, text string, maxWidth int) []string {
 	words := strings.Fields(text)
 	if len(words) == 0 {

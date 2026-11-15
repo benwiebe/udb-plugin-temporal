@@ -1,3 +1,5 @@
+// Package datasources contains unit tests for iCalendar and CalDAV calendar parsing,
+// event window filtering, and change notification signaling.
 package datasources
 
 import (

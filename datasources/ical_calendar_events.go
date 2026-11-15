@@ -15,6 +15,20 @@ import (
 	ical "github.com/emersion/go-ical"
 )
 
+// ICalCalendarEventsDatasource polls an iCalendar (.ics) feed via HTTP(S), webcal://,
+// or a local file path. It caches parsed calendar data in memory, supports HTTP
+// conditional headers (ETag, If-Modified-Since), and handles recurring event expansions.
+//
+// Configuration fields (via JSON config):
+//   - url: HTTP(S) or webcal:// calendar feed URL (mutually exclusive with path)
+//   - path: local filesystem path to an .ics file (mutually exclusive with url)
+//   - refreshSeconds: interval in seconds between polling checks (default 300)
+//   - lookBackDays: number of past days of events to include (default 1)
+//   - lookAheadDays: number of upcoming days of events to query (default 30)
+//   - maxEvents: maximum number of events retained in memory (default 10)
+//   - includeAllDay: whether to include all-day calendar events (default true)
+//   - timezone: IANA timezone identifier for interpreting floating timestamps (default system local)
+//   - maxBytes: maximum allowed response body size in bytes (default 8MB)
 type ICalCalendarEventsDatasource struct {
 	calendarEventsPollingDatasource
 	client              *http.Client
@@ -31,6 +45,7 @@ type ICalCalendarEventsDatasource struct {
 	pendingSize         int64
 }
 
+// NewICalCalendarEventsDatasource constructs an uninitialized ICalCalendarEventsDatasource.
 func NewICalCalendarEventsDatasource() *ICalCalendarEventsDatasource {
 	return &ICalCalendarEventsDatasource{
 		calendarEventsPollingDatasource: newCalendarEventsPollingDatasource(),
@@ -39,18 +54,22 @@ func NewICalCalendarEventsDatasource() *ICalCalendarEventsDatasource {
 	}
 }
 
+// GetId returns the unique datasource identifier ("benwiebe/udb-plugin-temporal/ical-calendar-events").
 func (d *ICalCalendarEventsDatasource) GetId() string {
 	return "benwiebe/udb-plugin-temporal/ical-calendar-events"
 }
 
+// GetName returns the human-readable display name ("iCalendar Events").
 func (d *ICalCalendarEventsDatasource) GetName() string {
 	return "iCalendar Events"
 }
 
+// GetType returns the datasource type string (CalendarEventsType).
 func (d *ICalCalendarEventsDatasource) GetType() string {
 	return CalendarEventsType
 }
 
+// Init parses configuration, validates the source URL/path, and sets up polling parameters.
 func (d *ICalCalendarEventsDatasource) Init(cfg json.RawMessage) error {
 	var parsed struct {
 		URL      string `json:"url"`

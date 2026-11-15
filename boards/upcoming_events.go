@@ -17,8 +17,23 @@ import (
 	"golang.org/x/image/font"
 )
 
-// UpcomingEventsBoard accepts any datasource that supplies CalendarEventsData.
-// It renders from cached data only, with no network access on the render path.
+// UpcomingEventsBoard displays upcoming calendar events provided by a CalendarEventsData datasource.
+// It renders from memory-cached data, performing no network requests during rendering.
+//
+// Configuration fields (via JSON config):
+//   - maxEvents: maximum number of upcoming events to render (default 1)
+//   - timezone: IANA timezone identifier for formatting event times (e.g., "America/Toronto"; default system local)
+//   - timeFormat: Go time layout string for event start/end times (default "15:04")
+//   - dateFormat: Go time layout string for event dates when beyond tomorrow (default "Jan 2")
+//   - emptyText: message displayed when no events are scheduled (default "No events")
+//   - showLocation: whether to render the event location on its own line if space allows (default false)
+//   - padding: padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle: pixel font style ("auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", "pixelifySansBold")
+//   - fontScale: integer pixel scaling multiplier (default 0, automatic fit)
+//   - fillScreen: when true, removes padding for edge-to-edge rendering (default false)
+//   - colour: hex colour for event title text (default "#FFFFFF")
+//   - timeColour: hex colour for event time and location text (default "#64B4FF")
+//   - backgroundColour: hex colour for the background (default "#000000")
 type UpcomingEventsBoard struct {
 	datasource                           types.Datasource
 	dimensions                           types.BoardDimensions
@@ -34,13 +49,26 @@ type UpcomingEventsBoard struct {
 	now                                  func() time.Time
 }
 
+// NewUpcomingEventsBoard constructs an uninitialized UpcomingEventsBoard.
 func NewUpcomingEventsBoard() *UpcomingEventsBoard                             { return &UpcomingEventsBoard{now: time.Now} }
+
+// GetId returns the board identifier ("upcoming-events").
 func (b *UpcomingEventsBoard) GetId() string                                   { return "upcoming-events" }
+
+// GetName returns the display name ("Upcoming Events").
 func (b *UpcomingEventsBoard) GetName() string                                 { return "Upcoming Events" }
+
+// GetSupportedDimensions returns supported dimensions (empty slice allows dynamic sizing).
 func (b *UpcomingEventsBoard) GetSupportedDimensions() []types.BoardDimensions { return nil }
+
+// GetType returns the board type (dynamic animation frame generation).
 func (b *UpcomingEventsBoard) GetType() types.BoardType                        { return types.BoardTypeDynamic }
+
+// GetDatasourceType returns the expected datasource type (CalendarEventsType).
 func (b *UpcomingEventsBoard) GetDatasourceType() string                       { return datasources.CalendarEventsType }
 
+// Init parses configuration, validates display dimensions, binds the calendar datasource,
+// and resolves font sizing for event titles and timestamps.
 func (b *UpcomingEventsBoard) Init(cfg json.RawMessage, ds types.Datasource, dims types.BoardDimensions) error {
 	if ds == nil || ds.GetType() != datasources.CalendarEventsType {
 		return fmt.Errorf("upcoming-events: expected a calendar-events datasource")
@@ -250,6 +278,8 @@ func (b *UpcomingEventsBoard) eventWhen(event datasources.CalendarEvent, now tim
 	return when
 }
 
+// Render draws the current slice of active/upcoming events into an animation frame.
+// Frames refresh every second to update ongoing event time badges and countdowns.
 func (b *UpcomingEventsBoard) Render() types.AnimationFrame {
 	img := image.NewRGBA(image.Rect(0, 0, b.dimensions.Width, b.dimensions.Height))
 	draw.Draw(img, img.Bounds(), image.NewUniform(b.backgroundColour), image.Point{}, draw.Src)

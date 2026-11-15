@@ -17,27 +17,28 @@ import (
 )
 
 // CountdownBoard displays the time remaining until a target date/time.
-// Optional JSON config fields:
-//   - target:            target timestamp. Supported formats include RFC3339, "2006-01-02 15:04:05",
-//     "2006-01-02 15:04", and "2006-01-02". Required.
-//   - timezone:          IANA timezone used to interpret zone-less targets and current time.
-//   - label:             optional second line shown below the countdown
-//   - colour:            fallback hex colour for both lines, e.g. "#FFFFFF" (default white)
-//   - labelColour:       hex colour for the label line
-//   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
-//   - padding:           padding in pixels on all sides (default 10% of width/height)
-//   - fontStyle:         style for the countdown line: "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
-//   - fontScale:         integer countdown scale (default 0, automatic)
-//   - labelFontStyle:    optional label font style override
-//   - labelFontScale:    optional integer label scale override
-//   - fillScreen:        use zero padding (default false)
-//   - horizontalAlign:   "left", "center", or "right" (default "center")
-//   - verticalAlign:     "top", "center", or "bottom" (default "center")
-//   - showSeconds:       include seconds in the countdown (default true)
-//   - expiredText:       text to render once the target has passed (default "NOW")
-//   - labelUppercase:    render the label in uppercase (default false)
-//   - labelScale:        relative label font scale versus countdown font (default 0.35)
-//   - lineGap:           gap in pixels between countdown and label lines (default 2)
+//
+// Configuration fields (via JSON config):
+//   - target: target timestamp string (RFC3339, "2006-01-02 15:04:05", "2006-01-02 15:04", or "2006-01-02"). Required.
+//   - timezone: IANA timezone identifier for interpreting zone-less targets and current time.
+//   - label: optional descriptive label displayed beneath the countdown digits.
+//   - colour: fallback hex colour for both lines (default "#FFFFFF")
+//   - countdownColour: hex colour for the countdown digits (defaults to colour)
+//   - labelColour: hex colour for the label line (defaults to colour)
+//   - backgroundColour: hex colour for the background (default "#000000")
+//   - padding: padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle: font style for countdown digits ("auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", "pixelifySansBold")
+//   - fontScale: integer pixel scaling multiplier for countdown digits (default 0, automatic fit)
+//   - labelFontStyle: optional font style override for the label line
+//   - labelFontScale: optional integer pixel scaling multiplier for the label line
+//   - fillScreen: when true, removes padding for edge-to-edge rendering (default false)
+//   - horizontalAlign: horizontal text alignment ("left", "center", "right"; default "center")
+//   - verticalAlign: vertical text alignment ("top", "center", "bottom"; default "center")
+//   - showSeconds: whether to include seconds in countdown formatting (default true)
+//   - expiredText: text to render once the countdown reaches zero (default "NOW")
+//   - labelUppercase: render the label text in uppercase (default false)
+//   - labelScale: relative label font scale versus countdown font (default 0.35)
+//   - lineGap: gap in pixels between countdown and label lines (default 2)
 type CountdownBoard struct {
 	datasource       types.Datasource
 	target           time.Time
@@ -73,18 +74,30 @@ type CountdownBoard struct {
 	cachedCombinedHeight   int
 }
 
+// NewCountdownBoard constructs an uninitialized CountdownBoard.
 func NewCountdownBoard() *CountdownBoard {
 	return &CountdownBoard{}
 }
 
-func (b *CountdownBoard) GetId() string   { return "countdown" }
+// GetId returns the board identifier ("countdown").
+func (b *CountdownBoard) GetId() string { return "countdown" }
+
+// GetName returns the display name ("Countdown").
 func (b *CountdownBoard) GetName() string { return "Countdown" }
+
+// GetSupportedDimensions returns supported dimensions (empty slice allows dynamic sizing).
 func (b *CountdownBoard) GetSupportedDimensions() []types.BoardDimensions {
 	return []types.BoardDimensions{}
 }
-func (b *CountdownBoard) GetType() types.BoardType  { return types.BoardTypeDynamic }
+
+// GetType returns the board type (dynamic animation frame generation).
+func (b *CountdownBoard) GetType() types.BoardType { return types.BoardTypeDynamic }
+
+// GetDatasourceType returns the expected datasource type (CurrentTimeType).
 func (b *CountdownBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
+// Init parses configuration, validates target date/time, binds the datasource,
+// and precomputes typography for the countdown timer and optional multi-line wrapped label.
 func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
 	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
 		return fmt.Errorf("countdown: expected a current-time datasource, got %T", datasource)
@@ -228,6 +241,8 @@ func (b *CountdownBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 	return b.buildCache(dimensions)
 }
 
+// Render produces an animation frame displaying the current countdown value and optional label.
+// Duration is 500ms when seconds are shown, or 1s otherwise.
 func (b *CountdownBoard) Render() types.AnimationFrame {
 	now := b.datasource.GetData().(time.Time)
 	if b.location != nil {

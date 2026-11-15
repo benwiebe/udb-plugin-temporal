@@ -1,3 +1,5 @@
+// Package boards contains unit and visual regression tests for digital-clock, date,
+// clock-date, countdown, and upcoming-events boards.
 package boards
 
 import (

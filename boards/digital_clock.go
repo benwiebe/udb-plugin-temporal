@@ -1,3 +1,6 @@
+// Package boards provides display board implementations for rendering temporal data,
+// including digital clocks, dates, combined clock-date displays, countdown timers,
+// and upcoming calendar events on dot-matrix and pixel-based displays.
 package boards
 
 import (
@@ -17,18 +20,19 @@ import (
 )
 
 // DigitalClockBoard displays the current time from a CurrentTimeDatasource.
-// Optional JSON config fields:
-//   - format:            Go time layout string (default "15:04"; use "15:04:05" to show seconds)
-//   - colour:            hex colour for the digits, e.g. "#FF0000" (default white)
-//   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
-//   - blinkColon:        toggle colon separators off on odd seconds (default true)
-//   - padding:           padding in pixels on all sides (default 10% of width/height)
-//   - fontStyle:         "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
-//   - fontScale:         integer pixel scale (default 0, automatic)
-//   - fillScreen:        use zero padding (default false)
-//   - horizontalAlign:   "left", "center", or "right" (default "center")
-//   - verticalAlign:     "top", "center", or "bottom" (default "center")
-//   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
+//
+// Configuration fields (via JSON config):
+//   - format: Go time layout string (default "15:04"; e.g., "15:04:05" to show seconds, "3:04 PM" for 12-hour)
+//   - colour: hex colour for digits/text (default "#FFFFFF")
+//   - backgroundColour: hex colour for background (default "#000000")
+//   - blinkColon: toggle colon separators off on odd seconds (default true)
+//   - padding: padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle: pixel font style ("auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", "pixelifySansBold")
+//   - fontScale: integer pixel scaling multiplier (default 0, automatic fit)
+//   - fillScreen: when true, removes padding for edge-to-edge rendering (default false)
+//   - horizontalAlign: horizontal text alignment ("left", "center", "right"; default "center")
+//   - verticalAlign: vertical text alignment ("top", "center", "bottom"; default "center")
+//   - timezone: IANA timezone identifier (e.g., "America/Toronto"; default system local)
 type DigitalClockBoard struct {
 	datasource       types.Datasource
 	format           string
@@ -52,18 +56,30 @@ type DigitalClockBoard struct {
 	cachedDescent int
 }
 
+// NewDigitalClockBoard constructs an uninitialized DigitalClockBoard.
 func NewDigitalClockBoard() *DigitalClockBoard {
 	return &DigitalClockBoard{}
 }
 
-func (b *DigitalClockBoard) GetId() string   { return "digital-clock" }
+// GetId returns the board identifier ("digital-clock").
+func (b *DigitalClockBoard) GetId() string { return "digital-clock" }
+
+// GetName returns the display name ("Digital Clock").
 func (b *DigitalClockBoard) GetName() string { return "Digital Clock" }
+
+// GetSupportedDimensions returns the supported board dimensions (empty slice allows dynamic sizing).
 func (b *DigitalClockBoard) GetSupportedDimensions() []types.BoardDimensions {
 	return []types.BoardDimensions{}
 }
-func (b *DigitalClockBoard) GetType() types.BoardType  { return types.BoardTypeDynamic }
+
+// GetType returns the board type (dynamic animation frame generation).
+func (b *DigitalClockBoard) GetType() types.BoardType { return types.BoardTypeDynamic }
+
+// GetDatasourceType returns the expected datasource type (CurrentTimeType).
 func (b *DigitalClockBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
+// Init parses the board configuration, validates dimensions, binds the datasource,
+// and precomputes font caching and drawing metrics.
 func (b *DigitalClockBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
 	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
 		return fmt.Errorf("digital-clock: expected a current-time datasource, got %T", datasource)
@@ -158,6 +174,9 @@ func (b *DigitalClockBoard) Init(cfg json.RawMessage, datasource types.Datasourc
 	return b.buildCache(dimensions)
 }
 
+// Render generates a single animation frame containing the rendered clock digits.
+// The frame duration is set to 500ms when blinking colons or second counters are active,
+// or 1s otherwise.
 func (b *DigitalClockBoard) Render() types.AnimationFrame {
 	t := b.datasource.GetData().(time.Time)
 	if b.location != nil {

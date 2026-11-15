@@ -1,3 +1,5 @@
+// Package udb_plugin_temporal contains end-to-end integration tests verifying that
+// all boards and datasources can be instantiated and rendered using example configuration files.
 package udb_plugin_temporal
 
 import (

@@ -1,72 +1,153 @@
 # UDB Temporal
 
-Time and calendar boards for [UDB](https://github.com/benwiebe/udb-core), a plugin-based runtime for Raspberry Pi LED matrix displays. Boards render with bitmap pixel fonts and optional bold text faces, and can be previewed through UDB's HTTP display without hardware.
+Time, date, countdown, and calendar boards and datasources for [UDB (Universal Display Board)](https://github.com/benwiebe/udb-core), a modular runtime for Raspberry Pi LED matrix displays.
 
-Clock and text boards can use automatic or explicit bitmap fonts, bold Silkscreen or Pixelify Sans text faces, integer scales, and zero-padding full-screen layouts. The outlined numeric style is suited to large clocks with smaller secondary text; see the [font configuration examples](docs/CONFIGURATION.md#common-time-board-settings).
+Boards render with crisp bitmap pixel fonts and optional bold text faces, supporting both hardware LED panels and UDB's built-in HTTP virtual display preview.
 
-Requires Go 1.26.1 or later and `udb-plugin-library v0.8.0` or later. Plugins are normal Go packages compiled into UDB; there are no runtime `.so` files.
+## Features
 
-## Boards and datasources
+- **Digital Clock**: Configurable 12/24-hour time layouts, timezone selection, blinking colons, custom colours, and pixel font styles.
+- **Date Display**: Formatted dates with optional uppercase rendering, custom colours, and midnight rollover transitions.
+- **Stacked Clock & Date**: Compact two-line display with independent font sizing, per-line colours, and custom line gaps.
+- **Countdown Timer**: Target date countdown with auto-wrapping labels, optional seconds, customizable expiration text, and sub-second expiry updates.
+- **Upcoming Events**: Calendar display with single-event or multi-line list layouts, relative date tags ("Today", "Tomorrow"), all-day event support, and outage resilience.
+- **Flexible Calendar Providers**: iCalendar (.ics files or HTTP/webcal URLs with ETag/Last-Modified caching) and CalDAV with auto-discovery and server-side recurrence expansion.
 
-| Board ID | Purpose | Datasource ID |
-|----------|---------|---------------|
-| `digital-clock` | Clock with configurable format, timezone and blinking colon | `current-time` |
-| `date` | Current date | `current-time` |
-| `clock-date` | Stacked clock and date | `current-time` |
-| `countdown` | Time remaining until a target, with an optional label | `current-time` |
-| `upcoming-events` | Next calendar event or a short list | `ical-calendar-events` or `caldav-calendar-events` |
+## Boards and Datasources
 
-Every configuration references the plugin ID `udb-plugin-temporal`. You must declare datasource instances; UDB does not create them automatically. Explicitly select the datasource on each board when using multiple calendars.
+| Board ID | Purpose | Compatible Datasources |
+|---|---|---|
+| `digital-clock` | Clock with configurable layout, timezone, and colon blinking | `current-time` |
+| `date` | Current date display | `current-time` |
+| `clock-date` | Stacked two-line clock and date | `current-time` |
+| `countdown` | Time remaining until target timestamp with optional label | `current-time` |
+| `upcoming-events` | Next calendar event or multi-event list | `ical-calendar-events`, `caldav-calendar-events` |
 
-## Try the plugin locally
+| Datasource ID | Type | Description |
+|---|---|---|
+| `current-time` | Instantaneous | Provides system/local timestamps synchronously on render. |
+| `ical-calendar-events` | Polling / Cache | Fetches local `.ics` files or remote HTTP(S)/webcal iCalendar feeds. |
+| `caldav-calendar-events` | Polling / Cache | Connects to remote CalDAV servers with calendar discovery and expansion. |
 
-With sibling checkouts of UDB core, the plugin library and this plugin:
+## Using with UDB
 
-1. Add `import _ "github.com/benwiebe/udb-plugin-temporal"` to core's `plugin_imports.go`.
-2. From the core directory, ensure the modules are in your Go workspace: `go work use . ../udb-plugin-library ../udb-plugin-temporal`.
-3. Build core with `make build`.
-4. From this plugin directory, copy `examples/config.json` to `config.json` and run `../udb-core/udb`.
-5. Open <http://localhost:8080> to see all five boards rotate.
+UDB plugins are compiled directly into the binary. Every temporal board and datasource references the plugin identifier `udb-plugin-temporal`.
 
-The demo reads [a local recurring calendar](examples/demo.ics). The countdown target is an example; change it to your own date. UDB reads `config.json` from the working directory, and the example calendar path is relative to that directory.
+### 1. Include the Plugin in UDB
 
-Full configurations are provided for [all boards with a local calendar](examples/config.json), [an HTTP/webcal feed](examples/ical-http.json), and [CalDAV with an event list](examples/caldav.json). Replace the remote examples' URLs and credentials before use. Set positive `durationSeconds` values to rotate dynamic boards; an omitted or zero duration holds one board indefinitely.
+Add a blank import to `plugin_imports.go` in your UDB build:
 
-See [the configuration reference](docs/CONFIGURATION.md) for every setting and default, plus calendar behavior and supported recurrence features.
-
-## Rendered examples
-
-These PNGs come directly from board rendering, enlarged with nearest-neighbor scaling. Clock, date, countdown and next-event examples use 64×32 pixels; the calendar list uses 128×64.
-
-| Digital clock | Date |
-|---------------|------|
-| ![Digital clock](docs/screenshots/digital-clock.png) | ![Date](docs/screenshots/date.png) |
-
-| Clock and date | Countdown |
-|----------------|-----------|
-| ![Clock and date](docs/screenshots/clock-date.png) | ![Countdown](docs/screenshots/countdown.png) |
-
-| Next event | Event list |
-|------------|------------|
-| ![Next event](docs/screenshots/upcoming-events.png) | ![Event list](docs/screenshots/upcoming-events-list.png) |
-
-## Development
-
-```sh
-make check       # build, tests and vet
-make race        # race detector
-make screenshots # regenerate README images
+```go
+import _ "github.com/benwiebe/udb-plugin-temporal"
 ```
 
-To verify published dependencies instead of sibling workspace modules, run `GOWORK=off make check` and `GOWORK=off make race`. CI uses this standalone mode.
+Or build UDB using the `PLUGINS` build argument:
 
-## v1.0.0 scope
+```sh
+make build PLUGINS="github.com/benwiebe/udb-plugin-temporal@v1.0.0"
+```
 
-Implemented: the five boards above, a shared calendar event contract, polling with immediate change notifications, ICS and CalDAV backends, outage recovery, config examples, rendered screenshots, and automated checks.
+### 2. Configure Datasources and Boards
 
-Before tagging v1.0.0, complete a real-server CalDAV smoke test and a physical Raspberry Pi display check. Automated CalDAV tests cover authentication, discovery, calendar selection, bounded REPORT requests and response conversion; they do not establish compatibility with every provider.
+Declare datasource instances in the `datasources` section of your UDB `config.json`, then reference them in your `boards` entries:
 
-World clocks, timers, stopwatches, sunrise/sunset, additional themes and broad locale support are deferred. See the configuration reference for calendar-format limitations.
+```json
+{
+  "display": { "type": "http", "width": 64, "height": 32, "scale": 8 },
+  "datasources": [
+    {
+      "id": "clock",
+      "plugin": "udb-plugin-temporal",
+      "datasourceId": "current-time"
+    },
+    {
+      "id": "calendar",
+      "plugin": "udb-plugin-temporal",
+      "datasourceId": "ical-calendar-events",
+      "config": {
+        "url": "https://example.com/calendar.ics",
+        "timezone": "America/Toronto",
+        "refreshSeconds": 300,
+        "maxEvents": 10
+      }
+    }
+  ],
+  "boards": [
+    {
+      "plugin": "udb-plugin-temporal",
+      "boardId": "digital-clock",
+      "datasource": "clock",
+      "durationSeconds": 8,
+      "config": { "timezone": "America/Toronto", "colour": "#64B4FF" }
+    },
+    {
+      "plugin": "udb-plugin-temporal",
+      "boardId": "upcoming-events",
+      "datasource": "calendar",
+      "durationSeconds": 8,
+      "config": { "timezone": "America/Toronto", "padding": 2 }
+    }
+  ]
+}
+```
+
+For complete configuration options, default values, and recurrence details, see the [Configuration Reference](docs/CONFIGURATION.md).
+
+## Quickstart / Local Demo
+
+To preview the plugin locally without LED hardware:
+
+1. Clone `udb-core`, `udb-plugin-library`, and `udb-plugin-temporal` side by side.
+2. In `udb-core`, initialize the workspace: `go work init . ../udb-plugin-library ../udb-plugin-temporal`.
+3. In `udb-core/plugin_imports.go`, ensure `import _ "github.com/benwiebe/udb-plugin-temporal"` is present.
+4. Build UDB: `cd ../udb-core && make build`.
+5. Run UDB from `udb-plugin-temporal`:
+   ```sh
+   cd ../udb-plugin-temporal
+   ../udb-core/udb -config examples/config.json
+   ```
+6. Open <http://localhost:8080> in your browser to view the rotating demo boards.
+
+Example configurations are available in `examples/`:
+- [`examples/config.json`](examples/config.json): All 5 boards rotating with a local sample `.ics` file.
+- [`examples/ical-http.json`](examples/ical-http.json): Remote iCalendar / webcal HTTP feed.
+- [`examples/caldav.json`](examples/caldav.json): CalDAV integration with an event list on a 128×64 display.
+
+## Rendered Examples
+
+Scaled pixel-accurate renderings generated from the plugin's actual rendering pipeline:
+
+| Digital Clock | Date |
+|---|---|
+| ![Digital clock](docs/screenshots/digital-clock.png) | ![Date](docs/screenshots/date.png) |
+
+| Clock and Date | Countdown |
+|---|---|
+| ![Clock and date](docs/screenshots/clock-date.png) | ![Countdown](docs/screenshots/countdown.png) |
+
+| Next Event (64×32) | Event List (128×64) |
+|---|---|
+| ![Next event](docs/screenshots/upcoming-events.png) | ![Event list](docs/screenshots/upcoming-events-list.png) |
+
+## Development & Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md) for architecture details, testing guidelines, and submission instructions.
+
+### Common Development Commands
+
+```sh
+make check       # Run build, unit tests, and go vet
+make race        # Run tests with Go race detector
+make tidy        # Clean up and verify go.mod
+make screenshots # Regenerate preview screenshots in docs/screenshots/
+```
+
+To run checks against published modules rather than local workspace directories:
+
+```sh
+GOWORK=off make check
+GOWORK=off make race
+```
 
 ## License
 

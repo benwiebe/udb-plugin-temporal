@@ -16,27 +16,28 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// ClockDateBoard displays the current time and date as a stacked two-line layout.
-// Optional JSON config fields:
-//   - timeFormat:        Go time layout string for the top line (default "15:04")
-//   - dateFormat:        Go time layout string for the bottom line (default "Mon Jan 2")
-//   - colour:            fallback hex colour for both lines, e.g. "#FFFFFF" (default white)
-//   - timeColour:        hex colour for the time line
-//   - dateColour:        hex colour for the date line
-//   - backgroundColour:  hex colour for the background, e.g. "#000000" (default black)
-//   - blinkColon:        toggle colon separators off on odd seconds in the time line (default true)
-//   - padding:           padding in pixels on all sides (default 10% of width/height)
-//   - fontStyle:         style for the time line: "auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", or "pixelifySansBold"
-//   - fontScale:         integer time-line scale (default 0, automatic)
-//   - dateFontStyle:     optional date-line font style override
-//   - dateFontScale:     optional integer date-line scale override
-//   - fillScreen:        use zero padding (default false)
-//   - horizontalAlign:   "left", "center", or "right" (default "center")
-//   - verticalAlign:     "top", "center", or "bottom" (default "center")
-//   - timezone:          IANA timezone name, e.g. "America/Toronto" (default local time)
-//   - dateUppercase:     render the formatted date in uppercase (default false)
-//   - dateScale:         relative date font scale versus time font (default 0.45)
-//   - lineGap:           gap in pixels between time and date lines (default 2)
+// ClockDateBoard displays the current time and date in a stacked two-line layout.
+//
+// Configuration fields (via JSON config):
+//   - timeFormat: Go time layout string for the top line (default "15:04")
+//   - dateFormat: Go time layout string for the bottom line (default "Mon Jan 2")
+//   - colour: fallback hex colour for both lines (default "#FFFFFF")
+//   - timeColour: hex colour for the time line (defaults to colour)
+//   - dateColour: hex colour for the date line (defaults to colour)
+//   - backgroundColour: hex colour for the background (default "#000000")
+//   - blinkColon: toggle colon separators off on odd seconds in the time line (default true)
+//   - padding: padding in pixels on all sides (default 10% of width/height)
+//   - fontStyle: font style for the time line ("auto", "dotMatrix", "scoreboard", "condensed", "outlined", "silkscreenBold", "pixelifySansBold")
+//   - fontScale: integer pixel scaling multiplier for time line (default 0, automatic fit)
+//   - dateFontStyle: optional font style override for the date line
+//   - dateFontScale: optional integer pixel scaling multiplier for the date line
+//   - fillScreen: when true, removes padding for edge-to-edge rendering (default false)
+//   - horizontalAlign: horizontal text alignment ("left", "center", "right"; default "center")
+//   - verticalAlign: vertical text alignment ("top", "center", "bottom"; default "center")
+//   - timezone: IANA timezone identifier (e.g., "America/Toronto"; default system local)
+//   - dateUppercase: render the formatted date in uppercase (default false)
+//   - dateScale: relative date font scale versus time font (default 0.45)
+//   - lineGap: gap in pixels between time and date lines (default 2)
 type ClockDateBoard struct {
 	datasource       types.Datasource
 	timeFormat       string
@@ -71,18 +72,30 @@ type ClockDateBoard struct {
 	cachedCombinedHeight int
 }
 
+// NewClockDateBoard constructs an uninitialized ClockDateBoard.
 func NewClockDateBoard() *ClockDateBoard {
 	return &ClockDateBoard{}
 }
 
-func (b *ClockDateBoard) GetId() string   { return "clock-date" }
+// GetId returns the board identifier ("clock-date").
+func (b *ClockDateBoard) GetId() string { return "clock-date" }
+
+// GetName returns the display name ("Clock + Date").
 func (b *ClockDateBoard) GetName() string { return "Clock + Date" }
+
+// GetSupportedDimensions returns supported dimensions (empty slice allows dynamic sizing).
 func (b *ClockDateBoard) GetSupportedDimensions() []types.BoardDimensions {
 	return []types.BoardDimensions{}
 }
-func (b *ClockDateBoard) GetType() types.BoardType  { return types.BoardTypeDynamic }
+
+// GetType returns the board type (dynamic animation frame generation).
+func (b *ClockDateBoard) GetType() types.BoardType { return types.BoardTypeDynamic }
+
+// GetDatasourceType returns the expected datasource type (CurrentTimeType).
 func (b *ClockDateBoard) GetDatasourceType() string { return datasources.CurrentTimeType }
 
+// Init parses configuration, validates display dimensions, binds the datasource,
+// and computes the dual-line font scales and baseline positions.
 func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, dimensions types.BoardDimensions) error {
 	if datasource == nil || datasource.GetType() != datasources.CurrentTimeType {
 		return fmt.Errorf("clock-date: expected a current-time datasource, got %T", datasource)
@@ -230,6 +243,8 @@ func (b *ClockDateBoard) Init(cfg json.RawMessage, datasource types.Datasource, 
 	return b.buildCache(dimensions)
 }
 
+// Render generates an animation frame containing the two-line clock and date layout.
+// Duration is 500ms when colon blinking or seconds display is active, or 1s otherwise.
 func (b *ClockDateBoard) Render() types.AnimationFrame {
 	t := b.datasource.GetData().(time.Time)
 	if b.location != nil {

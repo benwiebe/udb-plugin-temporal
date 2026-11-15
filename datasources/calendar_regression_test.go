@@ -1,3 +1,5 @@
+// Package datasources contains regression tests covering recurring rule expansion,
+// daylight saving time boundaries, multi-status CalDAV responses, and cache invalidation.
 package datasources
 
 import (

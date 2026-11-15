@@ -1,3 +1,4 @@
+// Package helpers provides colour parsing and utility routines used across boards and datasources.
 package helpers
 
 import (
@@ -7,7 +8,7 @@ import (
 	"strings"
 )
 
-// parseHexColour parses a "#RRGGBB" or "RRGGBB" hex string into a color.RGBA.
+// ParseHexColour parses a 6-character "#RRGGBB" or "RRGGBB" hex string into a fully-opaque color.RGBA.
 func ParseHexColour(s string) (color.RGBA, error) {
 	s = strings.TrimPrefix(s, "#")
 	if len(s) != 6 {
